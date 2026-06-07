@@ -5,6 +5,7 @@ import urllib.request
 import urllib.error
 import json
 import os
+import subprocess
 import sys
 import glob
 import runpy
@@ -194,9 +195,7 @@ def main():
 
                     if start_mtime is not None and cur_mtime is not None and cur_mtime != start_mtime:
                         print("[*] Detected updated self file on disk. Restarting to apply update...")
-                        exec_args = [sys.executable] + sys.argv
-                        exec_args = [f'"{arg}"' if ' ' in arg else arg for arg in exec_args]
-                        os.execv(sys.executable, exec_args)
+                        sys.exit(subprocess.call([sys.executable] + sys.argv))
                     else:
                         print(f"[*] Skipping execution of self ('{name}') to avoid recursion.")
                     continue
