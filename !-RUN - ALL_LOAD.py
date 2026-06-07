@@ -132,6 +132,21 @@ def main():
         return 1
         
     scripts_to_download = filter_scripts(contents, SCRIPT_PREFIX)
+    repo_script_names = {script["name"] for script in scripts_to_download}
+    
+    script_dir = os.path.dirname(self_path)
+    pattern = os.path.join(script_dir, f"{SCRIPT_PREFIX}*.py")
+    local_scripts = glob.glob(pattern)
+    
+    for path in local_scripts:
+        name = os.path.basename(path)
+        if name not in repo_script_names:
+            print(f"[*] Local script '{name}' is not in the repository. Deleting...")
+            try:
+                os.remove(path)
+                print(f"[+] Successfully deleted '{name}'.")
+            except OSError as e:
+                print(f"[-] Failed to delete '{name}': {e}")
     
     if not scripts_to_download:
         print("[*] No scripts to download. Exiting.")
