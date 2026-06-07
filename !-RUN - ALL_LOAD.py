@@ -74,28 +74,29 @@ def filter_scripts(contents: list, prefix: str) -> list:
     print(f"[+] Found {len(filtered_scripts)} script(s) to download.")
     return filtered_scripts
 
-def download_script(download_url: str, file_name: str) -> bool:
+def download_script(download_url: str, target_path: str) -> bool:
     """
     Downloads a single file from the given URL and saves it locally.
     
     Args:
         download_url (str): The direct download URL of the file.
-        file_name (str): The name of the file to save locally.
+        target_path (str): The absolute path where the file should be saved.
         
     Returns:
         bool: True if download was successful, False otherwise.
     """
-    if os.path.exists(file_name):
+    file_name = os.path.basename(target_path)
+    if os.path.exists(target_path):
         print(f"[*] File '{file_name}' already exists. Deleting it before download...")
         try:
-            os.remove(file_name)
+            os.remove(target_path)
         except OSError as e:
             print(f"[-] Failed to delete existing file '{file_name}': {e}")
             return False
 
     print(f"[*] Downloading '{file_name}'...")
     try:
-        urllib.request.urlretrieve(download_url, file_name)
+        urllib.request.urlretrieve(download_url, target_path)
         print(f"[+] Successfully downloaded '{file_name}'.")
         return True
     except urllib.error.HTTPError as e:
@@ -158,7 +159,8 @@ def main():
     failure_count = 0
     
     for script in scripts_to_download:
-        success = download_script(script["download_url"], script["name"])
+        target_path = os.path.join(script_dir, script["name"])
+        success = download_script(script["download_url"], target_path)
         if success:
             success_count += 1
         else:
@@ -192,13 +194,15 @@ def main():
 
                     if start_mtime is not None and cur_mtime is not None and cur_mtime != start_mtime:
                         print("[*] Detected updated self file on disk. Restarting to apply update...")
-                        os.execv(sys.executable, [sys.executable] + sys.argv)
+                        exec_args = [sys.executable] + sys.argv
+                        exec_args = [f'"{arg}"' if ' ' in arg else arg for arg in exec_args]
+                        os.execv(sys.executable, exec_args)
                     else:
                         print(f"[*] Skipping execution of self ('{name}') to avoid recursion.")
                     continue
 
                 print(f"[*] Executing local script '{name}'...")
-                runpy.run_path(abs_path, run_name=os.path.splitext(name)[0])
+                runpy.run_path(abs_path, run_name="__main__")
                 print(f"[+] Finished executing '{name}'.")
             except Exception as e:
                 print(f"[-] Error executing '{path}': {e}")
