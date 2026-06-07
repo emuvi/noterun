@@ -87,18 +87,23 @@ def download_script(download_url: str, target_path: str) -> bool:
         bool: True if download was successful, False otherwise.
     """
     file_name = os.path.basename(target_path)
-    if os.path.exists(target_path):
-        print(f"[*] File '{file_name}' already exists. Deleting it before download...")
-        try:
-            os.remove(target_path)
-        except OSError as e:
-            print(f"[-] Failed to delete existing file '{file_name}': {e}")
-            return False
 
     print(f"[*] Downloading '{file_name}'...")
     try:
-        urllib.request.urlretrieve(download_url, target_path)
-        print(f"[+] Successfully downloaded '{file_name}'.")
+        req = urllib.request.Request(download_url)
+        req.add_header('User-Agent', 'Python-urllib')
+        with urllib.request.urlopen(req) as response:
+            new_data = response.read()
+            
+        if os.path.exists(target_path):
+            with open(target_path, 'rb') as f:
+                if f.read() == new_data:
+                    print(f"[+] File '{file_name}' is already up-to-date. Skipping write.")
+                    return True
+            
+        with open(target_path, 'wb') as f:
+            f.write(new_data)
+        print(f"[+] Successfully saved '{file_name}'.")
         return True
     except urllib.error.HTTPError as e:
         print(f"[-] HTTP Error {e.code} while downloading '{file_name}': {e.reason}")
