@@ -1,10 +1,17 @@
 import os
 import datetime
+import sys
+from typing import Optional, Tuple
 
-def get_file_time(filepath):
+def get_file_time(filepath: str) -> Optional[datetime.datetime]:
     """
     Retrieves the file's creation time, falling back to modification time if necessary.
-    Returns a datetime object or None if an error occurs.
+    
+    Args:
+        filepath (str): The absolute path to the file.
+        
+    Returns:
+        datetime.datetime: The parsed datetime object, or None if an error occurs.
     """
     try:
         stat = os.stat(filepath)
@@ -12,14 +19,23 @@ def get_file_time(filepath):
         return datetime.datetime.fromtimestamp(stat.st_ctime)
     except AttributeError:
         return datetime.datetime.fromtimestamp(stat.st_mtime)
+    except OSError as e:
+        print(f"[-] OS Error getting file time for '{os.path.basename(filepath)}': {e}")
+        return None
     except Exception as e:
-        print(f"[ERROR] Could not get file time for '{os.path.basename(filepath)}': {e}")
+        print(f"[-] Unexpected error getting file time for '{os.path.basename(filepath)}': {e}")
         return None
 
-def parse_date_prefix(filename):
+def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, Optional[str]]:
     """
     Attempts to parse date/time prefix from the filename based on known formats.
-    Returns the parsed datetime, the remaining filename, and the matched format string.
+    
+    Args:
+        filename (str): The name of the file to parse.
+        
+    Returns:
+        tuple: (parsed_datetime, remaining_filename, matched_format_string)
+               Returns (None, filename, None) if parsing fails.
     """
     formats = [
         "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
@@ -28,6 +44,7 @@ def parse_date_prefix(filename):
         "%Y%m%d_%H%M%S", "%Y%m%d"
     ]
     
+    # Check string prefixes from length 25 down to 8 characters
     for length in range(25, 7, -1):
         if length > len(filename):
             continue
@@ -49,32 +66,39 @@ def parse_date_prefix(filename):
                 continue
     return None, filename, None
 
-def generate_new_filename(filename, filepath):
+def generate_new_filename(filename: str, filepath: str) -> Optional[str]:
     """
     Generates the targeted standard filename using parsed or file system dates.
-    Returns the new filename or None if no change is needed.
+    
+    Args:
+        filename (str): The current name of the file.
+        filepath (str): The absolute path to the file.
+        
+    Returns:
+        str: The newly generated formatted filename, or None if no change is needed/possible.
     """
     dt, rest_of_name, fmt = parse_date_prefix(filename)
     target_fmt = "%Y.%m.%d_%H.%M.%S"
 
     if dt:
-        # If perfectly formatted already, skip
+        # Skip if already perfectly formatted
         if fmt == target_fmt and filename.startswith(dt.strftime(target_fmt) + " - "):
             return None
             
-        # If format misses hour, inject file time hour/min/sec
+        # If the recognized format lacks hour data, inject it from the file's metadata
         if fmt and '%H' not in fmt:
             file_dt = get_file_time(filepath)
             if file_dt:
                 dt = dt.replace(hour=file_dt.hour, minute=file_dt.minute, second=file_dt.second)
     else:
-        # No date recognized, use file's metadata time
+        # No date recognized in string, rely purely on file metadata
         dt = get_file_time(filepath)
         if not dt:
             return None # Cannot process without a valid date
+            
         rest_of_name = filename
         
-        # Clean leading separators
+        # Clean leading separators if any
         if rest_of_name.startswith(' - '):
             rest_of_name = rest_of_name[3:]
         elif rest_of_name.startswith('- ') or rest_of_name.startswith(' -'):
@@ -85,9 +109,16 @@ def generate_new_filename(filename, filepath):
     
     return new_name if new_name != filename else None
 
-def get_safe_target_path(directory, filename):
+def get_safe_target_path(directory: str, filename: str) -> str:
     """
-    Generates a unique file path avoiding overwriting existing files.
+    Generates a unique file path within the given directory to avoid overwriting.
+    
+    Args:
+        directory (str): The directory where the file will reside.
+        filename (str): The desired filename.
+        
+    Returns:
+        str: A safe, unique file path.
     """
     target_path = os.path.join(directory, filename)
     name_part, ext = os.path.splitext(filename)
@@ -100,42 +131,65 @@ def get_safe_target_path(directory, filename):
         
     return target_path
 
-def rename_file(filepath, directory, filename):
+def rename_file(filepath: str, directory: str, filename: str) -> bool:
     """
-    Handles the renaming operation and exceptions for a single file.
+    Handles the date extraction and renaming operation for a single file.
+    
+    Args:
+        filepath (str): The absolute path to the source file.
+        directory (str): The directory of the file.
+        filename (str): The current name of the file.
+        
+    Returns:
+        bool: True if renamed or skipped intentionally, False if an error occurred.
     """
     try:
         new_name = generate_new_filename(filename, filepath)
         if not new_name:
-            # Uncomment below if you want verbose skipping output
-            # print(f"[SKIP] '{filename}' is already formatted or cannot be processed.")
-            return
+            # File is already correctly named or couldn't be parsed
+            return True
 
         new_filepath = get_safe_target_path(directory, new_name)
         final_name = os.path.basename(new_filepath)
         
-        print(f"[INFO] Renaming:\n  Source: '{filename}'\n  Target: '{final_name}'")
+        print(f"[*] Renaming file...")
+        print(f"    From: '{filename}'")
+        print(f"    To:   '{final_name}'")
+        
         os.rename(filepath, new_filepath)
-        print(f"[SUCCESS] Renamed '{filename}' successfully.\n")
+        print(f"[+] Successfully renamed '{filename}'.\n")
+        return True
         
     except PermissionError as e:
-        print(f"[ERROR] Permission denied renaming '{filename}': {e}\n")
+        print(f"[-] Permission Denied renaming '{filename}': {e}\n")
+    except OSError as e:
+        print(f"[-] OS Error renaming '{filename}': {e}\n")
     except Exception as e:
-        print(f"[ERROR] Unexpected error renaming '{filename}': {e}\n")
+        print(f"[-] Unexpected error renaming '{filename}': {e}\n")
+        
+    return False
 
-def process_directory(directory):
+def filter_eligible_files(directory: str) -> list:
     """
-    Iterates through the directory to parse dates and rename files consistently.
+    Scans the directory for files that are eligible for renaming.
+    
+    Args:
+        directory (str): The directory to scan.
+        
+    Returns:
+        list: A list of eligible filenames.
     """
-    print(f"[START] Processing directory for renaming: '{directory}'\n")
+    print(f"[*] Scanning directory '{directory}' for files to rename...")
+    eligible_files = []
+    
     try:
         files = os.listdir(directory)
     except PermissionError as e:
-        print(f"[FATAL] Permission denied accessing directory '{directory}': {e}")
-        return
+        print(f"[-] Permission Denied accessing directory '{directory}': {e}")
+        return []
     except Exception as e:
-        print(f"[FATAL] Unexpected error accessing directory '{directory}': {e}")
-        return
+        print(f"[-] Unexpected error accessing directory '{directory}': {e}")
+        return []
 
     for filename in files:
         filepath = os.path.join(directory, filename)
@@ -143,16 +197,55 @@ def process_directory(directory):
         if not os.path.isfile(filepath):
             continue
             
+        # Ignore system/script files or .py/.url files
         if filename.startswith('!-') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url')):
-            # Uncomment below if you want verbose skipping output
-            # print(f"[SKIP] Ignoring system/script file: '{filename}'")
             continue
-
-        rename_file(filepath, directory, filename)
+            
+        eligible_files.append(filename)
         
-    print(f"[FINISHED] Directory renaming completed for '{directory}'.")
+    print(f"[+] Found {len(eligible_files)} eligible file(s) for renaming evaluation.\n")
+    return eligible_files
+
+def main():
+    """
+    Main execution function. Orchestrates the filtering and date-based renaming
+    of files within the script's directory.
+    """
+    print("=" * 50)
+    print("   Noterun Date-Based Rename Script Initialized")
+    print("=" * 50)
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    files_to_process = filter_eligible_files(script_dir)
+    
+    if not files_to_process:
+        print("[*] No files to process. Exiting.")
+        input("\nPress Enter to exit...")
+        sys.exit(0)
+        
+    print("-" * 50)
+    
+    success_count = 0
+    failure_count = 0
+    
+    for filename in files_to_process:
+        filepath = os.path.join(script_dir, filename)
+        if rename_file(filepath, script_dir, filename):
+            success_count += 1
+        else:
+            failure_count += 1
+            
+    print("-" * 50)
+    print(f"[*] Renaming process completed.")
+    print(f"[+] Processed successfully: {success_count}")
+    
+    if failure_count > 0:
+        print(f"[-] Errors encountered: {failure_count}")
+    else:
+        print("[+] All files processed without errors!")
+        
+    input("\nPress Enter to exit...")
 
 if __name__ == '__main__':
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    process_directory(script_dir)
+    main()
     input()
