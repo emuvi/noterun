@@ -199,8 +199,12 @@ def main():
                         cur_mtime = None
 
                     if start_mtime is not None and cur_mtime is not None and cur_mtime != start_mtime:
-                        print("[*] Detected updated self file on disk. Restarting to apply update...")
-                        sys.exit(subprocess.call([sys.executable] + sys.argv))
+                        if "--updated" not in sys.argv:
+                            print("[*] Detected updated self file on disk. Restarting to apply update...")
+                            sys.exit(subprocess.call([sys.executable] + sys.argv + ["--updated"]))
+                        else:
+                            print("[*] Update applied, continuing execution to avoid infinite loop.")
+                            print(f"[*] Skipping execution of self ('{name}') to avoid recursion.")
                     else:
                         print(f"[*] Skipping execution of self ('{name}') to avoid recursion.")
                     continue
