@@ -147,11 +147,12 @@ def main():
     
     if failure_count > 0:
         print(f"[-] Failed downloads: {failure_count}")
-        sys.exit(1)
+        return 1
     else:
         print("[+] All scripts downloaded successfully!")
-        sys.exit(0)
+        return 0
 
 if __name__ == "__main__":
-    main()
-    input()
+    exit_code = main()
+    input("\nPress Enter to exit...")
+    sys.exit(exit_code)

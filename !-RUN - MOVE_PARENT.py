@@ -118,8 +118,7 @@ def main():
     
     if not files_to_move:
         print("[*] No files to move. Exiting.")
-        input("\nPress Enter to exit...")
-        sys.exit(0)
+        return 0
         
     print("-" * 50)
     
@@ -139,11 +138,12 @@ def main():
     
     if failure_count > 0:
         print(f"[-] Failed moves: {failure_count}")
+        return 1
     else:
         print("[+] All files moved successfully!")
-        
-    input("\nPress Enter to exit...")
+        return 0
 
 if __name__ == '__main__':
-    main()
-    input()
+    exit_code = main()
+    input("\nPress Enter to exit...")
+    sys.exit(exit_code)

@@ -231,8 +231,7 @@ def main():
     
     if not media_files:
         print("[*] No target media files found. Exiting.")
-        input("\nPress Enter to exit...")
-        sys.exit(0)
+        return 0
         
     print("-" * 50)
     
@@ -252,11 +251,12 @@ def main():
     
     if failure_count > 0:
         print(f"[-] Errors encountered during processing: {failure_count}")
+        return 1
     else:
         print("[+] All files processed without errors!")
-        
-    input("\nPress Enter to exit...")
+        return 0
 
 if __name__ == '__main__':
-    main()
-    input()
+    exit_code = main()
+    input("\nPress Enter to exit...")
+    sys.exit(exit_code)
