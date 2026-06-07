@@ -5,10 +5,8 @@ import urllib.request
 import urllib.error
 import json
 import os
-import subprocess
 import sys
 import glob
-import runpy
 
 REPO_API_URL = "https://api.github.com/repos/emuvi/noterun/contents"
 SCRIPT_PREFIX = "!-RUN"
@@ -125,12 +123,7 @@ def main():
     print("   Noterun Scripts Downloader Initialized")
     print("=" * 50)
     
-    # Track our own file's modification time to detect updates
     self_path = os.path.abspath(__file__)
-    try:
-        start_mtime = os.path.getmtime(self_path)
-    except OSError:
-        start_mtime = None
 
     contents = fetch_repository_contents(REPO_API_URL)
     
@@ -181,40 +174,6 @@ def main():
         return 1
     else:
         print("[+] All scripts downloaded successfully!")
-        # Execute local scripts that match the prefix. If this script was updated
-        # during the download process, restart to pick up changes.
-        script_dir = os.path.dirname(self_path)
-        pattern = os.path.join(script_dir, f"{SCRIPT_PREFIX}*.py")
-        local_scripts = sorted(glob.glob(pattern))
-
-        for path in local_scripts:
-            try:
-                abs_path = os.path.abspath(path)
-                name = os.path.basename(path)
-                # If this is our own file, check for updates and restart if changed
-                if abs_path == self_path:
-                    try:
-                        cur_mtime = os.path.getmtime(self_path)
-                    except OSError:
-                        cur_mtime = None
-
-                    if start_mtime is not None and cur_mtime is not None and cur_mtime != start_mtime:
-                        if "--updated" not in sys.argv:
-                            print("[*] Detected updated self file on disk. Restarting to apply update...")
-                            sys.exit(subprocess.call([sys.executable] + sys.argv + ["--updated"]))
-                        else:
-                            print("[*] Update applied, continuing execution to avoid infinite loop.")
-                            print(f"[*] Skipping execution of self ('{name}') to avoid recursion.")
-                    else:
-                        print(f"[*] Skipping execution of self ('{name}') to avoid recursion.")
-                    continue
-
-                print(f"[*] Executing local script '{name}'...")
-                runpy.run_path(abs_path, run_name="__main__")
-                print(f"[+] Finished executing '{name}'.")
-            except Exception as e:
-                print(f"[-] Error executing '{path}': {e}")
-
         return 0
 
 if __name__ == "__main__":
