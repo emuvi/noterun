@@ -1,3 +1,6 @@
+# Copyright (c) 2026 emuvi
+# SPDX-License-Identifier: MIT
+
 import os
 import shutil
 import sys
