@@ -5,7 +5,7 @@ import os
 import sys
 
 REPO_API_URL = "https://api.github.com/repos/emuvi/noterun/contents"
-SCRIPT_PREFIX = "!-RUN "
+SCRIPT_PREFIX = "!-RUN"
 
 def fetch_repository_contents(url: str) -> list:
     """
@@ -121,13 +121,13 @@ def main():
     
     if not contents:
         print("[-] Aborting download process due to failure in fetching contents.")
-        sys.exit(1)
+        return 1
         
     scripts_to_download = filter_scripts(contents, SCRIPT_PREFIX)
     
     if not scripts_to_download:
         print("[*] No scripts to download. Exiting.")
-        sys.exit(0)
+        return 0
         
     print("-" * 50)
     
