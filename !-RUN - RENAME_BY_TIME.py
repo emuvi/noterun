@@ -69,7 +69,7 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
                 continue
     return None, filename, None
 
-def generate_new_filename(filename: str, filepath: str) -> Optional[str]:
+def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Generates the targeted standard filename using parsed or file system dates.
     
@@ -78,7 +78,7 @@ def generate_new_filename(filename: str, filepath: str) -> Optional[str]:
         filepath (str): The absolute path to the file.
         
     Returns:
-        str: The newly generated formatted filename, or None if no change is needed/possible.
+        tuple: (new_name, skip_reason). The newly generated formatted filename, or None if no change is needed/possible.
     """
     dt, rest_of_name, fmt = parse_date_prefix(filename)
     target_fmt = "%Y.%m.%d_%H.%M.%S"
@@ -86,7 +86,7 @@ def generate_new_filename(filename: str, filepath: str) -> Optional[str]:
     if dt:
         # Skip if already perfectly formatted
         if fmt == target_fmt and filename.startswith(dt.strftime(target_fmt) + " - "):
-            return None
+            return None, "Already perfectly formatted with date prefix"
             
         # If the recognized format lacks hour data, inject it from the file's metadata
         if fmt and '%H' not in fmt:
@@ -97,7 +97,7 @@ def generate_new_filename(filename: str, filepath: str) -> Optional[str]:
         # No date recognized in string, rely purely on file metadata
         dt = get_file_time(filepath)
         if not dt:
-            return None # Cannot process without a valid date
+            return None, "Cannot process without a valid date in file metadata"
             
         rest_of_name = filename
         
@@ -110,7 +110,10 @@ def generate_new_filename(filename: str, filepath: str) -> Optional[str]:
     formatted_dt = dt.strftime(target_fmt)
     new_name = f"{formatted_dt} - {rest_of_name}"
     
-    return new_name if new_name != filename else None
+    if new_name == filename:
+        return None, "Already perfectly formatted with date prefix"
+        
+    return new_name, None
 
 def get_safe_target_path(directory: str, filename: str) -> str:
     """
@@ -147,9 +150,12 @@ def rename_file(filepath: str, directory: str, filename: str) -> bool:
         bool: True if renamed or skipped intentionally, False if an error occurred.
     """
     try:
-        new_name = generate_new_filename(filename, filepath)
+        new_name, skip_reason = generate_new_filename(filename, filepath)
         if not new_name:
             # File is already correctly named or couldn't be parsed
+            print(f"[*] Skipping file...")
+            print(f"    File: '{filename}'")
+            print(f"    Reason: {skip_reason}\n")
             return True
 
         new_filepath = get_safe_target_path(directory, new_name)
