@@ -4,6 +4,7 @@
 import os
 import datetime
 import sys
+import re
 from typing import Optional, Tuple
 
 def get_file_time(filepath: str) -> Optional[datetime.datetime]:
@@ -177,8 +178,8 @@ def filter_eligible_files(directory: str) -> list:
         if not os.path.isfile(filepath):
             continue
             
-        # Ignore system/script files or .py/.url files
-        if filename.startswith('!-') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url')):
+        # Ignore system/script files or .py/.url/.lnk files
+        if filename.startswith('!-') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
             continue
             
         eligible_files.append(filename)
