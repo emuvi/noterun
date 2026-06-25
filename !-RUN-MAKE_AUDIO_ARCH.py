@@ -29,7 +29,7 @@ def main():
         for file_path in current_dir.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in audio_extensions:
                 # Skip already archived files to avoid duplicate conversions
-                if file_path.name.endswith('_arch.m4a'):
+                if file_path.name.endswith(' (arch).m4a'):
                     continue
                 files_to_convert.append(file_path)
     except OSError as e:
@@ -50,7 +50,7 @@ def main():
     failure_count = 0
     
     for file_path in files_to_convert:
-        output_file = file_path.with_name(f"{file_path.stem}_arch.m4a")
+        output_file = file_path.with_name(f"{file_path.stem} (arch).m4a")
         
         print(f"[*] Converting: '{file_path.name}' -> '{output_file.name}'...")
         
