@@ -18,16 +18,18 @@ def get_file_time(filepath: str) -> Optional[datetime.datetime]:
     """
     try:
         stat = os.stat(filepath)
-        # On Windows, st_ctime is usually creation time.
-        return datetime.datetime.fromtimestamp(stat.st_ctime)
-    except AttributeError:
-        return datetime.datetime.fromtimestamp(stat.st_mtime)
     except OSError as e:
         print(f"[-] OS Error getting file time for '{os.path.basename(filepath)}': {e}")
         return None
     except Exception as e:
         print(f"[-] Unexpected error getting file time for '{os.path.basename(filepath)}': {e}")
         return None
+
+    try:
+        # On Windows, st_ctime is usually creation time.
+        return datetime.datetime.fromtimestamp(stat.st_ctime)
+    except AttributeError:
+        return datetime.datetime.fromtimestamp(stat.st_mtime)
 
 def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, Optional[str]]:
     """
