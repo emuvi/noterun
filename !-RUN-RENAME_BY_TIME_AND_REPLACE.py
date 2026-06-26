@@ -81,7 +81,7 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
                 continue
     return None, filename, None
 
-def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], Optional[str]]:
+def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], Optional[str], list]:
     """
     Generates the targeted standard filename using parsed or file system dates,
     and applies configured string/regex replacements.
@@ -91,7 +91,7 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
         filepath (str): The absolute path to the file.
         
     Returns:
-        tuple: (new_name, skip_reason). The newly generated formatted filename, or None if no change is needed/possible.
+        tuple: (new_name, skip_reason, replacements_made). The newly generated formatted filename, or None if no change is needed/possible.
     """
     dt, rest_of_name, fmt = parse_date_prefix(filename)
     target_fmt = "%Y.%m.%d_%H.%M.%S"
@@ -106,7 +106,7 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
         # No date recognized in string, rely purely on file metadata
         dt = get_file_time(filepath)
         if not dt:
-            return None, "Cannot process without a valid date in file metadata"
+            return None, "Cannot process without a valid date in file metadata", []
             
         rest_of_name = filename
         
@@ -119,12 +119,18 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
     # Apply replacements to the filename (excluding the date prefix and extension)
     name_part, ext = os.path.splitext(rest_of_name)
     
+    replacements_made = []
+    
     for pattern, repl, is_regex in REPLACEMENTS:
         try:
+            old_name_part = name_part
             if is_regex:
                 name_part = re.sub(pattern, repl, name_part)
             else:
                 name_part = name_part.replace(pattern, repl)
+                
+            if old_name_part != name_part:
+                replacements_made.append((pattern, repl))
         except Exception as e:
             print(f"[-] Error applying replacement '{pattern}' to '{name_part}': {e}")
             
@@ -140,9 +146,9 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
     new_name = f"{formatted_dt} - {rest_of_name}"
     
     if new_name == filename:
-        return None, "Already perfectly formatted with date prefix and no replacements applied"
+        return None, "Already perfectly formatted with date prefix and no replacements applied", []
         
-    return new_name, None
+    return new_name, None, replacements_made
 
 def get_safe_target_path(directory: str, filename: str) -> str:
     """
@@ -179,7 +185,7 @@ def rename_file(filepath: str, directory: str, filename: str) -> bool:
         bool: True if renamed or skipped intentionally, False if an error occurred.
     """
     try:
-        new_name, skip_reason = generate_new_filename(filename, filepath)
+        new_name, skip_reason, replacements_made = generate_new_filename(filename, filepath)
         if not new_name:
             # File is already correctly named or couldn't be parsed
             print(f"[*] Skipping file...")
@@ -193,6 +199,10 @@ def rename_file(filepath: str, directory: str, filename: str) -> bool:
         print(f"[*] Renaming file...")
         print(f"    From: '{filename}'")
         print(f"    To:   '{final_name}'")
+        if replacements_made:
+            print(f"    Replacements applied:")
+            for pat, rep in replacements_made:
+                print(f"      - '{pat}' -> '{rep}'")
         
         os.rename(filepath, new_filepath)
         print(f"[+] Successfully renamed '{filename}'.\n")
