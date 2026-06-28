@@ -420,8 +420,6 @@ def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> 
                         f"Error moving related file {related_file}: {e}")
                     fail_count += 1
 
-            print_progress(
-                idx + 1, total, prefix='Associated Files Progress', suffix='Complete', length=30)
 
         if success_count > 0 or fail_count > 0:
             print_summary_box("Associated Files Moving",

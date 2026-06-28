@@ -756,8 +756,7 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
                 print_error(
                     f"Error processing potential associated file '{f}': {file_err}")
                 fail_count += 1
-            print_progress(
-                idx + 1, total, prefix='Associated Files Progress', suffix='Complete', length=30)
+
 
         print_success("Completed scanning and renaming associated files.")
         if success_count > 0 or fail_count > 0:
