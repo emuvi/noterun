@@ -14,6 +14,9 @@ from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 from PyQt5.QtWidgets import (QApplication, QLabel, QMainWindow, QVBoxLayout,
                              QWidget)
 
+# Global event chain to track execution trace for each file
+event_chain: List[str] = []
+
 # Initialize the LM Studio client pointing to the local LM Studio server.
 try:
     client = LMStd(base_url=os.environ.get("LMSTD_HOST", "http://localhost:1234"),
@@ -37,7 +40,9 @@ def get_current_time() -> str:
 def print_step(message: str) -> None:
     """Prints a step in a process."""
     try:
-        print(f"[{get_current_time()}] 🔹 [STEP] {message}")
+        msg = f"[{get_current_time()}] 🔹 [STEP] {message}"
+        print(msg)
+        event_chain.append(msg)
     except Exception as e:
         print(f"[{get_current_time()}] 🔴 [Error] print_step failed: {e}")
 
@@ -45,7 +50,9 @@ def print_step(message: str) -> None:
 def print_success(message: str) -> None:
     """Prints a successful step completion."""
     try:
-        print(f"[{get_current_time()}] ✅ [SUCCESS] {message}")
+        msg = f"[{get_current_time()}] ✅ [SUCCESS] {message}"
+        print(msg)
+        event_chain.append(msg)
     except Exception as e:
         print(f"[{get_current_time()}] 🔴 [Error] print_success failed: {e}")
 
@@ -53,7 +60,9 @@ def print_success(message: str) -> None:
 def print_error(message: str) -> None:
     """Prints an error message."""
     try:
-        print(f"[{get_current_time()}] 🔴 [ERROR] {message}")
+        msg = f"[{get_current_time()}] 🔴 [ERROR] {message}"
+        print(msg)
+        event_chain.append(msg)
     except Exception as e:
         print(f"[{get_current_time()}] 🔴 [Error] print_error failed: {e}")
 
@@ -81,17 +90,18 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
     """
     try:
         box_width = 50
-        print("\n" + "╔" + "═" * (box_width - 2) + "╗")
-        title_str = f" 📊 SUMMARY: {title} "
-        print("║" + title_str.center(box_width - 2) + "║")
-        print("╠" + "═" * (box_width - 2) + "╣")
-        print(
-            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║")
-        print(
-            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║")
-        print(
-            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║")
-        print("╚" + "═" * (box_width - 2) + "╝\n")
+        lines = [
+            "\n" + "╔" + "═" * (box_width - 2) + "╗",
+            "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
+            "╠" + "═" * (box_width - 2) + "╣",
+            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
+            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║",
+            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+            "╚" + "═" * (box_width - 2) + "╝\n"
+        ]
+        for line in lines:
+            print(line)
+        event_chain.extend(lines)
     except Exception as e:
         print_error(f"Failed to print summary box: {e}")
 
@@ -190,22 +200,16 @@ def extract_text_from_pages(reader: PyPDF2.PdfReader, pages_to_extract: List[int
 
     try:
         for idx, page_num in enumerate(pages_to_extract):
-            print_step(
-                f"Extracting text from page {page_num + 1} (Index: {idx+1}/{total})")
             try:
                 page = reader.pages[page_num]
                 extracted = page.extract_text()
                 if extracted:
                     text += extracted + "\n"
                 success_count += 1
-                print_success(f"Extracted page {page_num + 1}")
             except Exception as page_err:
                 print_error(
                     f"Error extracting text from page {page_num + 1}: {page_err}")
                 fail_count += 1
-
-            print_progress(
-                idx + 1, total, prefix='Page Extraction Progress', suffix='Complete', length=30)
 
         print_success(
             f"Successfully finished text extraction loop. Total characters: {len(text)}")
@@ -487,7 +491,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
         # Save the error log
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
-            f.write(error_log)
+            f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
         print_success(f"Saved error log to '{log_file_path}'")
 
         # Move related files
@@ -576,6 +580,7 @@ class DropZone(QLabel):
         """
         Extracts text from the PDF and triggers command execution.
         """
+        event_chain.clear()
         print_step(
             f"=== Beginning processing cycle for dropped file: {file_path} ===")
         success_count = 0

@@ -11,6 +11,9 @@ from typing import List, Optional, Tuple
 import PyPDF2
 from lmstd import ChatResponse, LMStd
 
+# Global event chain to track execution trace for each file
+event_chain: List[str] = []
+
 # --- Visualization and Logging Helpers ---
 
 
@@ -21,34 +24,47 @@ def get_current_time() -> str:
 
 def log_message(message: str) -> None:
     """Logs a general message to the console with a timestamp."""
-    print(f"[{get_current_time()}] {message}")
+    msg = f"[{get_current_time()}] {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_step(action: str, message: str) -> None:
     """Prints a step being executed with a visual indicator."""
-    print(f"  [➔] {action}: {message}")
+    msg = f"  [➔] {action}: {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_success(action: str, message: str) -> None:
     """Prints a success message with a visual indicator."""
-    print(f"  [✓] {action}: {message}")
+    msg = f"  [✓] {action}: {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_error(action: str, message: str) -> None:
     """Prints an error message with a visual indicator."""
-    print(f"  [✗] {action} ERROR: {message}")
+    msg = f"  [✗] {action} ERROR: {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
     """Prints a visual box containing the summary of a cycle or session."""
     box_width = 50
-    print("\n" + "╔" + "═" * (box_width - 2) + "╗")
-    print("║" + f"{title}".center(box_width - 2) + "║")
-    print("╠" + "═" * (box_width - 2) + "╣")
-    print("║" + f"Total Processed: {total}".ljust(box_width - 2) + "║")
-    print("║" + f"Successes:       {successes}".ljust(box_width - 2) + "║")
-    print("║" + f"Failures:        {fails}".ljust(box_width - 2) + "║")
-    print("╚" + "═" * (box_width - 2) + "╝\n")
+    lines = [
+        "\n" + "╔" + "═" * (box_width - 2) + "╗",
+        "║" + f"{title}".center(box_width - 2) + "║",
+        "╠" + "═" * (box_width - 2) + "╣",
+        "║" + f"Total Processed: {total}".ljust(box_width - 2) + "║",
+        "║" + f"Successes:       {successes}".ljust(box_width - 2) + "║",
+        "║" + f"Failures:        {fails}".ljust(box_width - 2) + "║",
+        "╚" + "═" * (box_width - 2) + "╝\n"
+    ]
+    for line in lines:
+        print(line)
+    event_chain.extend(lines)
 
 
 # --- Setup & API Functions ---
@@ -318,7 +334,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
         # Save the error log
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
-            f.write(error_log)
+            f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
         print_success(func_name, f"Saved error log to '{log_file_path}'")
 
         # Move related files
@@ -456,6 +472,7 @@ def main() -> None:
                     f"=== Starting New Cycle: Found {total_files_in_cycle} file(s) to process ===")
 
                 for index, file in enumerate(files_to_process, 1):
+                    event_chain.clear()
                     percentage = (index / total_files_in_cycle) * 100
                     print(
                         f"\n[{get_current_time()}] --- Processing File {index} of {total_files_in_cycle} ({percentage:.1f}%) ---")

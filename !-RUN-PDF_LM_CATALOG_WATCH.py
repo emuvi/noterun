@@ -15,6 +15,9 @@ import spacy
 from langdetect import detect
 from lmstd import ChatResponse, ListModelsResponse, LMStd
 
+# Global event chain to track execution trace for each file
+event_chain: List[str] = []
+
 # Global cache for loaded Spacy models
 nlp_models_cache: Dict[str, Any] = {}
 _failed_to_move_files = set()
@@ -27,35 +30,47 @@ def get_current_time() -> str:
 
 def log_message(message: str) -> None:
     """Logs a message to the console with a timestamp."""
-    print(f"[{get_current_time()}] {message}")
+    msg = f"[{get_current_time()}] {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def log_step(step_name: str, status: str = "STARTING") -> None:
     """Logs a specific step of a function."""
-    print(f"  [>] {step_name}... [{status}]")
+    msg = f"  [>] {step_name}... [{status}]"
+    print(msg)
+    event_chain.append(msg)
 
 
 def log_step_success(step_name: str, message: str = "") -> None:
     """Logs the success of a specific step."""
-    msg = f" - {message}" if message else ""
-    print(f"  [✓] {step_name}... [SUCCESS]{msg}")
+    msg = f"  [✓] {step_name}... [SUCCESS]" + (f" - {message}" if message else "")
+    print(msg)
+    event_chain.append(msg)
 
 
 def log_step_error(step_name: str, error_msg: str) -> None:
     """Logs an error occurring in a specific step."""
-    print(f"  [X] {step_name}... [ERROR: {error_msg}]")
+    msg = f"  [X] {step_name}... [ERROR: {error_msg}]"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
     """Prints a visual box containing the summary of a cycle or session."""
     box_width = 50
-    print("\n" + "╔" + "═" * (box_width - 2) + "╗")
-    print("║" + f"{title}".center(box_width - 2) + "║")
-    print("╠" + "═" * (box_width - 2) + "╣")
-    print("║" + f"Total Processed: {total}".ljust(box_width - 2) + "║")
-    print("║" + f"Successes:       {successes}".ljust(box_width - 2) + "║")
-    print("║" + f"Failures:        {fails}".ljust(box_width - 2) + "║")
-    print("╚" + "═" * (box_width - 2) + "╝\n")
+    lines = [
+        "\n" + "╔" + "═" * (box_width - 2) + "╗",
+        "║" + f"{title}".center(box_width - 2) + "║",
+        "╠" + "═" * (box_width - 2) + "╣",
+        "║" + f"Total Processed: {total}".ljust(box_width - 2) + "║",
+        "║" + f"Successes:       {successes}".ljust(box_width - 2) + "║",
+        "║" + f"Failures:        {fails}".ljust(box_width - 2) + "║",
+        "╚" + "═" * (box_width - 2) + "╝\n"
+    ]
+    for line in lines:
+        print(line)
+    event_chain.extend(lines)
 
 
 def load_spacy_model(lang_code: str) -> Any:
@@ -621,7 +636,7 @@ def handle_unreadable_file(file: str, current_dir: str, error_log: str) -> None:
             
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
-            f.write(error_log)
+            f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
             
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
@@ -652,7 +667,7 @@ def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
             
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
-            f.write(error_log)
+            f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
             
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
@@ -670,6 +685,7 @@ def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
 
 def process_single_file(file: str, current_dir: str, fields: List[str], prompts: Dict[str, str]) -> bool:
     """Processes a single PDF file, extracting text, querying model, formatting fields and renaming. Returns True if successful."""
+    event_chain.clear()
     try:
         log_message(f"[{file}] -> Starting processing...")
         if not should_process(file):

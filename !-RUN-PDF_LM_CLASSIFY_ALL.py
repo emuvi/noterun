@@ -11,6 +11,9 @@ from typing import List, Optional, Tuple
 import PyPDF2
 from lmstd import ChatResponse, LMStd
 
+# Global event chain to track execution trace for each file
+event_chain: List[str] = []
+
 # --- Visualization and Logging Helpers ---
 
 
@@ -21,22 +24,30 @@ def get_current_time() -> str:
 
 def log_message(message: str) -> None:
     """Logs a general message to the console with a timestamp."""
-    print(f"[{get_current_time()}] {message}")
+    msg = f"[{get_current_time()}] {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_step(message: str) -> None:
     """Prints a step being executed with a visual indicator."""
-    print(f"[{get_current_time()}] 🔹 [STEP] {message}")
+    msg = f"[{get_current_time()}] 🔹 [STEP] {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_success(message: str) -> None:
     """Prints a success message with a visual indicator."""
-    print(f"[{get_current_time()}] ✅ [SUCCESS] {message}")
+    msg = f"[{get_current_time()}] ✅ [SUCCESS] {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_error(message: str) -> None:
     """Prints an error message with a visual indicator."""
-    print(f"[{get_current_time()}] 🔴 [ERROR] {message}")
+    msg = f"[{get_current_time()}] 🔴 [ERROR] {message}"
+    print(msg)
+    event_chain.append(msg)
 
 
 def print_progress(current: int, total: int, prefix: str = '', suffix: str = '', decimals: int = 1, length: int = 50, fill: str = '█', printEnd: str = "\n") -> None:
@@ -59,17 +70,18 @@ def print_progress(current: int, total: int, prefix: str = '', suffix: str = '',
 def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
     """Prints a visual box containing the summary of a cycle or session."""
     box_width = 50
-    print("\n" + "╔" + "═" * (box_width - 2) + "╗")
-    title_str = f" 📊 SUMMARY: {title} "
-    print("║" + title_str.center(box_width - 2) + "║")
-    print("╠" + "═" * (box_width - 2) + "╣")
-    print(
-        "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║")
-    print(
-        "║" + f" ✅ Successes          : {successes:<21}".ljust(box_width - 2) + "║")
-    print(
-        "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║")
-    print("╚" + "═" * (box_width - 2) + "╝\n")
+    lines = [
+        "\n" + "╔" + "═" * (box_width - 2) + "╗",
+        "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
+        "╠" + "═" * (box_width - 2) + "╣",
+        "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
+        "║" + f" ✅ Successes          : {successes:<21}".ljust(box_width - 2) + "║",
+        "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+        "╚" + "═" * (box_width - 2) + "╝\n"
+    ]
+    for line in lines:
+        print(line)
+    event_chain.extend(lines)
 
 # --- Setup & API Functions ---
 
@@ -342,7 +354,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
         # Save the error log
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
-            f.write(error_log)
+            f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
         print_success(f"{func_name}: Saved error log to '{log_file_path}'")
 
         # Move related files
@@ -448,9 +460,10 @@ def process_all_pdfs() -> None:
 
         print_success(f"Found {total} PDF file(s).")
 
-        for idx, file in enumerate(files_to_process):
+        for index, file in enumerate(files_to_process):
+            event_chain.clear()
             print_step(
-                f"=== Beginning processing cycle for file: {file} ({idx+1}/{total}) ===")
+                f"=== Beginning processing cycle for file: {file} ({index+1}/{total}) ===")
             try:
                 # 1. Extract Text
                 text = extract_pdf_text(os.path.join(current_dir, file))
@@ -523,7 +536,7 @@ def process_all_pdfs() -> None:
                                   total, success_count, fail_count)
 
             print_progress(
-                idx + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
+                index + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
 
         print_success("Batch processing cycle complete.")
         print_summary_box("Cycle Summary", total, success_count, fail_count)
