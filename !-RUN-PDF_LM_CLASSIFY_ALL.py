@@ -18,36 +18,57 @@ event_chain: List[str] = []
 
 
 def get_current_time() -> str:
-    """Returns the current time formatted as HH:MM:SS."""
-    return datetime.now().strftime('%H:%M:%S')
+    """
+    Returns the current time formatted as HH:MM:SS.
+
+    Returns:
+        str: Formatted current time string.
+    """
+    try:
+        return datetime.now().strftime('%H:%M:%S')
+    except Exception as e:
+        print(f"🔴 [Error] get_current_time failed: {e}")
+        return "00:00:00"
 
 
 def log_message(message: str) -> None:
     """Logs a general message to the console with a timestamp."""
-    msg = f"[{get_current_time()}] {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] ℹ️ [LOG] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}")
 
 
 def print_step(message: str) -> None:
     """Prints a step being executed with a visual indicator."""
-    msg = f"[{get_current_time()}] 🔹 [STEP] {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] 🔹 [STEP] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_step failed: {e}")
 
 
 def print_success(message: str) -> None:
     """Prints a success message with a visual indicator."""
-    msg = f"[{get_current_time()}] ✅ [SUCCESS] {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] ✅ [SUCCESS] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_success failed: {e}")
 
 
 def print_error(message: str) -> None:
     """Prints an error message with a visual indicator."""
-    msg = f"[{get_current_time()}] 🔴 [ERROR] {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] 🔴 [ERROR] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_error failed: {e}")
 
 
 def print_progress(current: int, total: int, prefix: str = '', suffix: str = '', decimals: int = 1, length: int = 50, fill: str = '█', printEnd: str = "\n") -> None:

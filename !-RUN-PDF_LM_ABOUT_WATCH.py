@@ -22,36 +22,58 @@ event_chain: List[str] = []
 
 
 def get_current_time() -> str:
-    """Returns the current time formatted as HH:MM:SS."""
-    return datetime.now().strftime('%H:%M:%S')
+    """
+    Returns the current time formatted as HH:MM:SS.
+
+    Returns:
+        str: Formatted current time string.
+    """
+    try:
+        return datetime.now().strftime('%H:%M:%S')
+    except Exception as e:
+        print(f"🔴 [Error] get_current_time failed: {e}")
+        return "00:00:00"
 
 
 def log_message(message: str) -> None:
     """Logs a general message to the console with a timestamp."""
-    msg = f"[{get_current_time()}] {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] ℹ️ [LOG] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}")
 
 
 def print_step(action: str, message: str) -> None:
     """Prints a step being executed with a visual indicator."""
-    msg = f"  [➔] {action}: {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] 🔹 [STEP] [{action}] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_step failed: {e}")
 
 
 def print_success(action: str, message: str) -> None:
     """Prints a success message with a visual indicator."""
-    msg = f"  [✓] {action}: {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] ✅ [SUCCESS] [{action}] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_success failed: {e}")
 
 
 def print_error(action: str, message: str) -> None:
     """Prints an error message with a visual indicator."""
-    msg = f"  [✗] {action} ERROR: {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] 🔴 [ERROR] [{action}] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_error failed: {e} - message: {message}")
+
 
 
 def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
@@ -426,8 +448,11 @@ def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str
 
 def handle_file_error(file: str, current_dir: str, error_log: str) -> None:
     """
-    Moves a file and its sidecars to '!-ERRORS' to avoid infinite processing loops.
+    Moves the file to '!-ERRORS' to prevent it from being endlessly processed.
+    Also attempts to move related files sharing the same basename.
+    Saves a detailed log file of the error.
     """
+    global _failed_to_move_files
     func_name = "Move On Error"
     print_step(
         func_name, f"Moving '{file}' to '!-ERRORS'")
@@ -441,7 +466,7 @@ def handle_file_error(file: str, current_dir: str, error_log: str) -> None:
             raise FileNotFoundError(f"Original file missing: {file}")
 
         shutil.move(file, error_path)
-        print_success(func_name, f"Moved main file to '{error_path}'")
+        print_success(func_name, f"Moved main file to '!-ERRORS'")
 
         # Save the error log
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
@@ -449,76 +474,101 @@ def handle_file_error(file: str, current_dir: str, error_log: str) -> None:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
         print_success(func_name, f"Saved error log to '{log_file_path}'")
 
-        # Rename sidecar files
-        print_step(func_name, "Checking for sidecar files to move...")
-        sidecars_renamed = 0
+        # Move related files
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
-                    rel_error_path = os.path.join(
-                        errors_dir, related_file)
+                    rel_error_path = os.path.join(errors_dir, related_file)
                     shutil.move(related_file, rel_error_path)
-                    sidecars_renamed += 1
+                    print_success(func_name, f"Moved related file '{related_file}' to '!-ERRORS'")
                 except Exception as inner_e:
                     print_error(
-                        func_name, f"Could not move sidecar '{related_file}': {inner_e}")
+                        func_name, f"Failed to move related file {related_file}: {inner_e}")
 
-        print_success(
-            func_name, f"Moved {sidecars_renamed} sidecar files.")
     except FileNotFoundError as fnfe:
         print_error(func_name, str(fnfe))
-        global _failed_to_move_files
         _failed_to_move_files.add(file)
     except Exception as e:
         print_error(
-            func_name, f"Could not move file: {e}")
-        global _failed_to_move_files
+            func_name, f"Failed to move main file {file}: {e}")
         _failed_to_move_files.add(file)
 
 
-def rename_pdf_and_sidecars(current_dir: str, original_file: str, new_path: str) -> bool:
+def rename_file(old_path: str, new_path: str) -> bool:
     """
-    Renames and moves the main PDF file and any matching sidecar files (e.g. metadata).
+    Renames/Moves a file from old_path to new_path.
     """
-    func_name = "Rename File and Sidecars"
-    print_step(
-        func_name, f"Executing rename of '{original_file}' to '{new_path}'")
+    func_name = "Rename File"
+    print_step(func_name, f"Attempting to rename '{old_path}' to '{new_path}'.")
     try:
-        new_file_name = os.path.basename(new_path)
-        final_new_base_name = os.path.splitext(new_file_name)[0]
-        old_base_name = os.path.splitext(original_file)[0]
-        target_dir = os.path.dirname(new_path)
-
-        shutil.move(os.path.join(current_dir, original_file), new_path)
-        print_success(
-            func_name, f"Main PDF renamed and moved to: {new_file_name}")
-
-        print_step(func_name, "Renaming and moving associated sidecar files...")
-        sidecars_renamed = 0
-        for related_file in os.listdir(current_dir):
-            if related_file == original_file or related_file == new_file_name:
-                continue
-            rel_base, rel_ext = os.path.splitext(related_file)
-            if rel_base == old_base_name:
-                related_target = os.path.join(
-                    target_dir, f"{final_new_base_name}{rel_ext}")
-                try:
-                    shutil.move(os.path.join(
-                        current_dir, related_file), related_target)
-                    sidecars_renamed += 1
-                except Exception as e:
-                    print_error(
-                        func_name, f"Error renaming/moving sidecar '{related_file}': {e}")
-
-        print_success(
-            func_name, f"Successfully renamed {sidecars_renamed} sidecar files.")
+        shutil.move(old_path, new_path)
+        print_success(func_name, f"Successfully renamed file to '{os.path.basename(new_path)}'.")
         return True
-    except OSError as os_error:
-        print_error(func_name, f"OS Error during rename: {os_error}")
+    except FileNotFoundError:
+        print_error(func_name, f"Original file '{old_path}' not found for renaming.")
+        return False
+    except PermissionError:
+        print_error(func_name, f"Permission denied when renaming '{old_path}'.")
         return False
     except Exception as e:
-        print_error(func_name, f"Unexpected error renaming files: {e}")
+        print_error(func_name, f"Error renaming file '{old_path}' to '{new_path}': {e}")
         return False
+
+
+def rename_associated_files(current_dir: str, target_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
+    """
+    Searches for and renames other files in the directory that share the same old base name.
+    Includes a progress cycle.
+    """
+    func_name = "Rename Associated Files"
+    print_step(func_name, f"Searching for associated files with base name '{old_base_name}' in '{current_dir}'.")
+    success_count = 0
+    fail_count = 0
+    total = 0
+
+    try:
+        files_in_dir = os.listdir(current_dir)
+        total = len(files_in_dir)
+        print_success(func_name, f"Found {total} files in directory. Filtering associated files.")
+
+        for idx, f in enumerate(files_in_dir):
+            print_step(func_name, f"Checking file for association: {f}")
+            f_path = os.path.join(current_dir, f)
+            try:
+                if not os.path.isfile(f_path):
+                    continue
+
+                f_base_name, f_ext = os.path.splitext(f)
+
+                # Check if this file is an associated file
+                if f_base_name == old_base_name and f != new_pdf_name:
+                    print_step(func_name, f"Found associated file: '{f}'")
+                    new_f_name = f"{final_new_base_name}{f_ext}"
+                    new_f_path = os.path.join(target_dir, new_f_name)
+
+                    print_step(func_name, f"Checking if target path '{new_f_path}' exists.")
+                    if os.path.exists(new_f_path):
+                        print_error(func_name, f"Cannot rename '{f}' to '{new_f_name}' because target already exists.")
+                        fail_count += 1
+                        continue
+
+                    print_step(func_name, f"Attempting to rename associated file '{f}' to '{new_f_name}'.")
+                    if rename_file(f_path, new_f_path):
+                        print_success(func_name, f"Renamed associated file '{f}' to '{new_f_name}'")
+                        success_count += 1
+                    else:
+                        print_error(func_name, f"Failed to rename associated file '{f}'.")
+                        fail_count += 1
+            except Exception as file_err:
+                print_error(func_name, f"Error processing potential associated file '{f}': {file_err}")
+                fail_count += 1
+
+        print_success(func_name, "Completed scanning and renaming associated files.")
+        if success_count > 0 or fail_count > 0:
+            print_summary_box("Associated Files Renaming", success_count + fail_count, success_count, fail_count)
+
+    except Exception as e:
+        print_error(func_name, f"Error during associated files renaming process: {e}")
 
 
 def get_files_to_process() -> List[str]:
@@ -594,9 +644,19 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
         handle_file_error(file, current_dir, "Failed to generate unique new path.")
         return False
 
-    success = rename_pdf_and_sidecars(current_dir, file, new_path)
-    if not success:
-        handle_file_error(file, current_dir, "Failed to rename main PDF and sidecars.")
+    old_base_name = os.path.splitext(os.path.basename(file))[0]
+    new_file_name = os.path.basename(new_path)
+    final_new_base_name = os.path.splitext(new_file_name)[0]
+
+    print_step("Rename Process", f"Ready to rename from '{old_base_name}.pdf' to '{new_file_name}'.")
+    success = rename_file(os.path.join(current_dir, file), new_path)
+
+    if success:
+        print_success("Rename Process", "Primary PDF renamed successfully. Proceeding to rename associated files.")
+        rename_associated_files(current_dir, target_dir, old_base_name, final_new_base_name, new_file_name)
+    else:
+        print_error("Rename Process", "Primary PDF renaming failed. Associated files will not be renamed.")
+        handle_file_error(file, current_dir, "Failed to rename main PDF and associated files.")
         return False
 
     return True

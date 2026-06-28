@@ -23,36 +23,58 @@ nlp_models_cache: Dict[str, Any] = {}
 
 
 def get_current_time() -> str:
-    """Returns the current time formatted as HH:MM:SS."""
-    return datetime.now().strftime('%H:%M:%S')
+    """
+    Returns the current time formatted as HH:MM:SS.
+
+    Returns:
+        str: Formatted current time string.
+    """
+    try:
+        return datetime.now().strftime('%H:%M:%S')
+    except Exception as e:
+        print(f"🔴 [Error] get_current_time failed: {e}")
+        return "00:00:00"
 
 
 def log_message(message: str) -> None:
-    """Logs a message to the console with a timestamp."""
-    msg = f"[{get_current_time()}] {message}"
-    print(msg)
-    event_chain.append(msg)
+    """Logs a general message to the console with a timestamp."""
+    try:
+        msg = f"[{get_current_time()}] ℹ️ [LOG] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}")
 
 
 def log_step(step_name: str, status: str = "STARTING") -> None:
     """Logs a specific step of a function."""
-    msg = f"  [>] {step_name}... [{status}]"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] 🔹 [STEP] [{step_name}] {status}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] log_step failed: {e}")
 
 
 def log_step_success(step_name: str, message: str = "") -> None:
     """Logs the success of a specific step."""
-    msg = f"  [✓] {step_name}... [SUCCESS]" + (f" - {message}" if message else "")
-    print(msg)
-    event_chain.append(msg)
+    try:
+        status_msg = f"{message}" if message else "SUCCESS"
+        msg = f"[{get_current_time()}] ✅ [SUCCESS] [{step_name}] {status_msg}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] log_step_success failed: {e}")
 
 
 def log_step_error(step_name: str, error_msg: str) -> None:
     """Logs an error occurring in a specific step."""
-    msg = f"  [X] {step_name}... [ERROR: {error_msg}]"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] 🔴 [ERROR] [{step_name}] {error_msg}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] log_step_error failed: {e}")
 
 
 def print_summary_box(title: str, total: int, success: int, fails: int) -> None:

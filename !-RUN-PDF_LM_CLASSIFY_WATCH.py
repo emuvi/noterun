@@ -18,36 +18,57 @@ event_chain: List[str] = []
 
 
 def get_current_time() -> str:
-    """Returns the current time formatted as HH:MM:SS."""
-    return datetime.now().strftime('%H:%M:%S')
+    """
+    Returns the current time formatted as HH:MM:SS.
+
+    Returns:
+        str: Formatted current time string.
+    """
+    try:
+        return datetime.now().strftime('%H:%M:%S')
+    except Exception as e:
+        print(f"🔴 [Error] get_current_time failed: {e}")
+        return "00:00:00"
 
 
 def log_message(message: str) -> None:
     """Logs a general message to the console with a timestamp."""
-    msg = f"[{get_current_time()}] {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] ℹ️ [LOG] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}")
 
 
 def print_step(action: str, message: str) -> None:
     """Prints a step being executed with a visual indicator."""
-    msg = f"  [➔] {action}: {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] 🔹 [STEP] [{action}] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_step failed: {e}")
 
 
 def print_success(action: str, message: str) -> None:
     """Prints a success message with a visual indicator."""
-    msg = f"  [✓] {action}: {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] ✅ [SUCCESS] [{action}] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_success failed: {e}")
 
 
 def print_error(action: str, message: str) -> None:
     """Prints an error message with a visual indicator."""
-    msg = f"  [✗] {action} ERROR: {message}"
-    print(msg)
-    event_chain.append(msg)
+    try:
+        msg = f"[{get_current_time()}] 🔴 [ERROR] [{action}] {message}"
+        print(msg)
+        event_chain.append(msg)
+    except Exception as e:
+        print(f"[{get_current_time()}] 🔴 [Error] print_error failed: {e} - message: {message}")
 
 
 def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
@@ -362,6 +383,64 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
         _failed_to_move_files.add(file_path)
 
 
+def move_associated_files(current_dir: str, target_dir: str, orig_base_name: str, final_base_name: str, orig_pdf_name: str) -> None:
+    """
+    Searches for and moves other files in the directory that share the same old base name.
+    Includes a progress cycle.
+    """
+    func_name = "Move Associated Files"
+    print_step(func_name, f"Searching for associated files with base name '{orig_base_name}' in '{current_dir}'.")
+    success_count = 0
+    fail_count = 0
+    total = 0
+
+    try:
+        files_in_dir = os.listdir(current_dir)
+        total = len(files_in_dir)
+        print_success(func_name, f"Found {total} files in directory. Filtering associated files.")
+
+        for idx, f in enumerate(files_in_dir):
+            print_step(func_name, f"Checking file for association: {f}")
+            f_path = os.path.join(current_dir, f)
+            try:
+                if not os.path.isfile(f_path):
+                    continue
+
+                f_base_name, f_ext = os.path.splitext(f)
+
+                # Check if this file is an associated file
+                if f_base_name == orig_base_name and f != orig_pdf_name:
+                    print_step(func_name, f"Found associated file: '{f}'")
+                    new_f_name = f"{final_base_name}{f_ext}"
+                    new_f_path = os.path.join(target_dir, new_f_name)
+
+                    print_step(func_name, f"Checking if target path '{new_f_path}' exists.")
+                    if os.path.exists(new_f_path):
+                        print_error(func_name, f"Cannot move '{f}' to '{new_f_name}' because target already exists.")
+                        fail_count += 1
+                        continue
+
+                    print_step(func_name, f"Attempting to move associated file '{f}' to '{new_f_name}'.")
+                    try:
+                        shutil.move(f_path, new_f_path)
+                        print_success(func_name, f"Moved associated file '{f}' to '{new_f_name}'")
+                        success_count += 1
+                    except Exception as move_err:
+                        print_error(func_name, f"Failed to move associated file '{f}': {move_err}")
+                        fail_count += 1
+
+            except Exception as file_err:
+                print_error(func_name, f"Error processing potential associated file '{f}': {file_err}")
+                fail_count += 1
+
+        print_success(func_name, "Completed scanning and moving associated files.")
+        if success_count > 0 or fail_count > 0:
+            print_summary_box("Associated Files Moving", success_count + fail_count, success_count, fail_count)
+
+    except Exception as e:
+        print_error(func_name, f"Error during associated files moving process: {e}")
+
+
 def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> bool:
     """Moves the PDF file and any related files sharing the exact same base name."""
     func_name = "Move Files and Sidecars"
@@ -389,31 +468,11 @@ def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> 
         final_base_name = os.path.splitext(os.path.basename(target_path))[0]
 
         # Move related files
-        print_step(func_name, "Moving associated sidecar files...")
-        sidecars_moved = 0
-        for related_file in os.listdir(current_dir):
-            if related_file == file_path:
-                continue
-            rel_base, rel_ext = os.path.splitext(related_file)
-            if rel_base == orig_base_name:
-                related_target = os.path.join(
-                    target_dir, f"{final_base_name}{rel_ext}")
-                try:
-                    shutil.move(os.path.join(
-                        current_dir, related_file), related_target)
-                    sidecars_moved += 1
-                except Exception as e:
-                    print_error(
-                        func_name, f"Error moving sidecar '{related_file}': {e}")
+        move_associated_files(current_dir, target_dir, orig_base_name, final_base_name, file_path)
 
-        print_success(
-            func_name, f"Successfully moved {sidecars_moved} sidecar files.")
         return True
-    except OSError as os_error:
-        print_error(func_name, f"OS Error during move: {os_error}")
-        return False
     except Exception as e:
-        print_error(func_name, f"Unexpected error moving files: {e}")
+        print_error(func_name, f"Error moving main file {file_path}: {e}")
         return False
 
 

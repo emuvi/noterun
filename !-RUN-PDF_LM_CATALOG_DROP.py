@@ -43,7 +43,11 @@ def get_current_time() -> str:
 def print_step(message: str) -> None:
     """Prints a step in a process."""
     try:
-        msg = f"[{get_current_time()}] 🔹 [STEP] {message}"
+        parts = message.split(":", 1)
+        if len(parts) == 2:
+            msg = f"[{get_current_time()}] 🔹 [STEP] [{parts[0].strip()}] {parts[1].strip()}"
+        else:
+            msg = f"[{get_current_time()}] 🔹 [STEP] [{message.strip()}] STARTING"
         print(msg)
         event_chain.append(msg)
     except Exception as e:
@@ -53,7 +57,11 @@ def print_step(message: str) -> None:
 def print_success(message: str) -> None:
     """Prints a successful step completion."""
     try:
-        msg = f"[{get_current_time()}] ✅ [SUCCESS] {message}"
+        parts = message.split(":", 1)
+        if len(parts) == 2:
+            msg = f"[{get_current_time()}] ✅ [SUCCESS] [{parts[0].strip()}] {parts[1].strip()}"
+        else:
+            msg = f"[{get_current_time()}] ✅ [SUCCESS] [{message.strip()}] SUCCESS"
         print(msg)
         event_chain.append(msg)
     except Exception as e:
@@ -63,7 +71,11 @@ def print_success(message: str) -> None:
 def print_error(message: str) -> None:
     """Prints an error message."""
     try:
-        msg = f"[{get_current_time()}] 🔴 [ERROR] {message}"
+        parts = message.split(":", 1)
+        if len(parts) == 2:
+            msg = f"[{get_current_time()}] 🔴 [ERROR] [{parts[0].strip()}] {parts[1].strip()}"
+        else:
+            msg = f"[{get_current_time()}] 🔴 [ERROR] [{message.strip()}] ERROR"
         print(msg)
         event_chain.append(msg)
     except Exception as e:
