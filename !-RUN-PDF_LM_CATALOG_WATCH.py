@@ -17,6 +17,7 @@ import traceback
 
 # Global cache for loaded Spacy models
 nlp_models_cache: Dict[str, Any] = {}
+_failed_to_move_files = set()
 
 
 def get_current_time() -> str:
@@ -499,10 +500,6 @@ def should_process(file_name: str) -> bool:
             log_step_success("Checking if file should be processed",
                              "False: Does not start with RAND")
             return False
-        if "(FAILED)" in file_name or "(UNREADABLE)" in file_name or "(ERROR)" in file_name:
-            log_step_success("Checking if file should be processed",
-                             "False: Already marked as failed/unreadable/error")
-            return False
         log_step_success("Checking if file should be processed", "True")
         return True
     except Exception as e:
@@ -600,7 +597,7 @@ def get_files_to_process(current_dir: str) -> List[str]:
         files_to_process = [os.path.basename(
             f) for f in pdf_files if os.path.basename(f).startswith("RAND ")]
         files_to_process = sorted(
-            [f for f in files_to_process if "(UNREADABLE)" not in f and "(FAILED)" not in f and "(ERROR)" not in f])
+            [f for f in files_to_process if f not in _failed_to_move_files])
         log_step_success("Scanning for PDF files",
                          f"Found {len(files_to_process)} file(s)")
         return files_to_process
@@ -610,55 +607,55 @@ def get_files_to_process(current_dir: str) -> List[str]:
 
 
 def handle_unreadable_file(file: str, current_dir: str) -> None:
-    """Renames an unreadable file to prevent looping and moves to '!-ERRORS'."""
+    """Moves an unreadable file to '!-ERRORS' to prevent looping."""
     try:
         log_step(f"Handling unreadable file: {file}")
         base_name, ext = os.path.splitext(file)
-        error_name = f"{base_name} (UNREADABLE){ext}"
         errors_dir = os.path.join(current_dir, "!-ERRORS")
         os.makedirs(errors_dir, exist_ok=True)
 
         shutil.move(os.path.join(current_dir, file),
-                    os.path.join(errors_dir, error_name))
+                    os.path.join(errors_dir, file))
         log_message(
-            f"[{file}] -> Renamed to {error_name} and moved to '!-ERRORS' to prevent looping.")
+            f"[{file}] -> Moved to '!-ERRORS' to prevent looping.")
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
-                rel_ext = os.path.splitext(related_file)[1]
                 try:
                     shutil.move(os.path.join(current_dir, related_file), os.path.join(
-                        errors_dir, f"{base_name} (UNREADABLE){rel_ext}"))
+                        errors_dir, related_file))
                 except Exception:
                     pass
         log_step_success(f"Handling unreadable file: {file}")
     except Exception as e:
         log_step_error(f"Handling unreadable file: {file}", str(e))
+        global _failed_to_move_files
+        _failed_to_move_files.add(file)
 
 
 def handle_error_file(file: str, current_dir: str) -> None:
-    """Renames a file that caused an error to prevent looping and moves to '!-ERRORS'."""
+    """Moves a file that caused an error to '!-ERRORS' to prevent looping."""
     try:
         log_step(f"Handling error file: {file}")
         base_name, ext = os.path.splitext(file)
-        error_name = f"{base_name} (ERROR){ext}"
         errors_dir = os.path.join(current_dir, "!-ERRORS")
         os.makedirs(errors_dir, exist_ok=True)
 
         shutil.move(os.path.join(current_dir, file),
-                    os.path.join(errors_dir, error_name))
+                    os.path.join(errors_dir, file))
         log_message(
-            f"[{file}] -> Renamed to {error_name} and moved to '!-ERRORS' to prevent looping on this file.")
+            f"[{file}] -> Moved to '!-ERRORS' to prevent looping on this file.")
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
-                rel_ext = os.path.splitext(related_file)[1]
                 try:
                     shutil.move(os.path.join(current_dir, related_file), os.path.join(
-                        errors_dir, f"{base_name} (ERROR){rel_ext}"))
+                        errors_dir, related_file))
                 except Exception:
                     pass
         log_step_success(f"Handling error file: {file}")
     except Exception as rename_e:
         log_step_error(f"Handling error file: {file}", str(rename_e))
+        global _failed_to_move_files
+        _failed_to_move_files.add(file)
 
 
 def process_single_file(file: str, current_dir: str, fields: List[str], prompts: Dict[str, str]) -> bool:
@@ -723,6 +720,8 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
                             pass
             except Exception as move_e:
                 log_message(f"[{file}] -> Error moving to !-ERRORS: {move_e}")
+                global _failed_to_move_files
+                _failed_to_move_files.add(file)
             return False
 
         fmt_author = format_author(extracted_data["Author"], current_nlp)

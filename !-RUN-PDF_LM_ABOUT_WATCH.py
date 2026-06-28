@@ -59,6 +59,7 @@ def print_summary_box(title: str, total: int, successes: int, fails: int) -> Non
 
 # Global cache for loaded Spacy models
 nlp_models_cache: Dict[str, Any] = {}
+_failed_to_move_files = set()
 
 
 def load_spacy_model(lang_code: str) -> Any:
@@ -400,19 +401,18 @@ def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str
         return None
 
 
-def mark_file_with_suffix(file: str, current_dir: str, suffix: str) -> None:
+def handle_file_error(file: str, current_dir: str) -> None:
     """
-    Renames a file and its sidecars with a specific suffix and moves them to '!-ERRORS' to avoid infinite processing loops.
+    Moves a file and its sidecars to '!-ERRORS' to avoid infinite processing loops.
     """
-    func_name = "Mark File With Suffix"
+    func_name = "Move On Error"
     print_step(
-        func_name, f"Applying suffix '{suffix}' and moving '{file}' to '!-ERRORS'")
+        func_name, f"Moving '{file}' to '!-ERRORS'")
     try:
         base_name, ext = os.path.splitext(file)
-        error_name = f"{base_name} {suffix}{ext}"
         errors_dir = os.path.join(current_dir, "!-ERRORS")
         os.makedirs(errors_dir, exist_ok=True)
-        error_path = os.path.join(errors_dir, error_name)
+        error_path = os.path.join(errors_dir, file)
 
         if not os.path.exists(file):
             raise FileNotFoundError(f"Original file missing: {file}")
@@ -421,14 +421,13 @@ def mark_file_with_suffix(file: str, current_dir: str, suffix: str) -> None:
         print_success(func_name, f"Moved main file to '{error_path}'")
 
         # Rename sidecar files
-        print_step(func_name, "Checking for sidecar files to rename and move...")
+        print_step(func_name, "Checking for sidecar files to move...")
         sidecars_renamed = 0
         for related_file in os.listdir(current_dir):
-            if related_file != error_name and related_file != file and os.path.splitext(related_file)[0] == base_name:
-                rel_ext = os.path.splitext(related_file)[1]
+            if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
                     rel_error_path = os.path.join(
-                        errors_dir, f"{base_name} {suffix}{rel_ext}")
+                        errors_dir, related_file)
                     shutil.move(related_file, rel_error_path)
                     sidecars_renamed += 1
                 except Exception as inner_e:
@@ -436,12 +435,14 @@ def mark_file_with_suffix(file: str, current_dir: str, suffix: str) -> None:
                         func_name, f"Could not move sidecar '{related_file}': {inner_e}")
 
         print_success(
-            func_name, f"Renamed and moved {sidecars_renamed} sidecar files.")
+            func_name, f"Moved {sidecars_renamed} sidecar files.")
     except FileNotFoundError as fnfe:
         print_error(func_name, str(fnfe))
     except Exception as e:
         print_error(
-            func_name, f"Could not append suffix {suffix} and move file: {e}")
+            func_name, f"Could not move file: {e}")
+        global _failed_to_move_files
+        _failed_to_move_files.add(file)
 
 
 def rename_pdf_and_sidecars(current_dir: str, original_file: str, new_path: str) -> bool:
@@ -502,7 +503,7 @@ def get_files_to_process() -> List[str]:
         for f in pdf_files:
             if f.upper().startswith("RAND"):
                 continue
-            if "(UNREADABLE)" in f or "(SUMMARY_FAILED)" in f or "(ERROR)" in f:
+            if f in _failed_to_move_files:
                 continue
             files_to_process.append(f)
         print_success(
@@ -524,12 +525,12 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
 
     text = extract_pdf_text(file)
     if not text:
-        mark_file_with_suffix(file, current_dir, "(UNREADABLE)")
+        handle_file_error(file, current_dir)
         return False
 
     prompt = build_summary_prompt(text)
     if not prompt:
-        mark_file_with_suffix(file, current_dir, "(SUMMARY_FAILED)")
+        handle_file_error(file, current_dir)
         return False
 
     start_time = time.time()
@@ -538,7 +539,7 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
     print_success("LLM Timing", f"LLM call completed in {elapsed_time:.2f}s")
 
     if not llm_response:
-        mark_file_with_suffix(file, current_dir, "(SUMMARY_FAILED)")
+        handle_file_error(file, current_dir)
         return False
 
     try:
@@ -550,18 +551,18 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
 
     new_base_name = sanitize_filename(llm_response)
     if not new_base_name:
-        mark_file_with_suffix(file, current_dir, "(SUMMARY_FAILED)")
+        handle_file_error(file, current_dir)
         return False
 
     target_dir = os.path.dirname(current_dir)
     new_path = get_unique_new_path(target_dir, new_base_name, file)
     if not new_path:
-        mark_file_with_suffix(file, current_dir, "(ERROR)")
+        handle_file_error(file, current_dir)
         return False
 
     success = rename_pdf_and_sidecars(current_dir, file, new_path)
     if not success:
-        mark_file_with_suffix(file, current_dir, "(ERROR)")
+        handle_file_error(file, current_dir)
         return False
 
     return True
@@ -641,7 +642,7 @@ def main() -> None:
                         print_error(
                             "Main Loop", f"Unexpected error while processing file '{file}': {e}")
                         traceback.print_exc()
-                        mark_file_with_suffix(file, current_dir, "(ERROR)")
+                        handle_file_error(file, current_dir)
                         cycle_fails += 1
                         total_session_fails += 1
                         print_summary_box("Cycle Summary", cycle_total, cycle_success, cycle_fails)

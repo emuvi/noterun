@@ -289,31 +289,33 @@ def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) 
     return None
 
 
-def rename_file_on_error(file_path: str, suffix: str, current_dir: str) -> None:
+def handle_file_error(file_path: str, current_dir: str) -> None:
     """
-    Renames the file to prevent it from being endlessly processed.
-    Also attempts to rename related files sharing the same basename.
+    Moves the file to '!-ERRORS' to prevent it from being endlessly processed.
+    Also attempts to move related files sharing the same basename.
     """
-    print_step(f"Rename On Error: Applying '{suffix}' suffix to file to prevent loop...")
+    func_name = "Move On Error"
+    print_step(f"{func_name}: Moving '{file_path}' to '!-ERRORS' to prevent loop...")
     base_name, ext = os.path.splitext(file_path)
-    error_name = f"{base_name} {suffix}{ext}"
+    errors_dir = os.path.join(current_dir, "!-ERRORS")
+    os.makedirs(errors_dir, exist_ok=True)
+    error_path = os.path.join(errors_dir, file_path)
 
     try:
-        os.rename(os.path.join(current_dir, file_path), os.path.join(current_dir, error_name))
-        print_success(f"Rename On Error: Renamed main file to: {error_name}")
+        shutil.move(os.path.join(current_dir, file_path), error_path)
+        print_success(f"{func_name}: Moved main file to '!-ERRORS'")
 
-        # Rename related files
+        # Move related files
         for related_file in os.listdir(current_dir):
             if related_file != file_path and os.path.splitext(related_file)[0] == base_name:
-                rel_ext = os.path.splitext(related_file)[1]
-                related_error_name = f"{base_name} {suffix}{rel_ext}"
                 try:
-                    os.rename(os.path.join(current_dir, related_file), os.path.join(current_dir, related_error_name))
-                    print_success(f"Rename On Error: Renamed related file to: {related_error_name}")
+                    shutil.move(os.path.join(current_dir, related_file),
+                                os.path.join(errors_dir, related_file))
+                    print_success(f"{func_name}: Moved related file '{related_file}' to '!-ERRORS'")
                 except Exception as e:
-                    print_error(f"Rename On Error: Failed to rename related file {related_file}: {e}")
+                    print_error(f"{func_name}: Failed to move related file {related_file}: {e}")
     except Exception as e:
-        print_error(f"Rename On Error: Failed to rename main file {file_path}: {e}")
+        print_error(f"{func_name}: Failed to move main file {file_path}: {e}")
 
 
 def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> bool:
@@ -391,8 +393,6 @@ def process_all_pdfs() -> None:
         for f in pdf_files:
             if f.upper().startswith("RAND"):
                 continue
-            if "(UNREADABLE)" in f or "(UNCLASSIFIED)" in f or "(ERROR)" in f:
-                continue
             files_to_process.append(f)
 
         total = len(files_to_process)
@@ -409,7 +409,7 @@ def process_all_pdfs() -> None:
                 # 1. Extract Text
                 text = extract_pdf_text(os.path.join(current_dir, file))
                 if not text:
-                    rename_file_on_error(file, "(UNREADABLE)", current_dir)
+                    handle_file_error(file, current_dir)
                     fail_count += 1
                     print_summary_box("Cycle Summary", total, success_count, fail_count)
                     print_summary_box("Overall Session Summary", total, success_count, fail_count)
@@ -421,7 +421,7 @@ def process_all_pdfs() -> None:
                     log_message(f"LLM Processing Time: {elapsed_time:.2f}s")
 
                     if not llm_response:
-                        rename_file_on_error(file, "(UNCLASSIFIED)", current_dir)
+                        handle_file_error(file, current_dir)
                         fail_count += 1
                         print_summary_box("Cycle Summary", total, success_count, fail_count)
                         print_summary_box("Overall Session Summary", total, success_count, fail_count)
@@ -440,7 +440,7 @@ def process_all_pdfs() -> None:
                                 print_summary_box("Cycle Summary", total, success_count, fail_count)
                                 print_summary_box("Overall Session Summary", total, success_count, fail_count)
                         else:
-                            rename_file_on_error(file, "(UNCLASSIFIED)", current_dir)
+                            handle_file_error(file, current_dir)
                             fail_count += 1
                             print_summary_box("Cycle Summary", total, success_count, fail_count)
                             print_summary_box("Overall Session Summary", total, success_count, fail_count)
@@ -453,7 +453,7 @@ def process_all_pdfs() -> None:
             except Exception as e:
                 print_error(f"Unexpected error processing '{file}': {e}")
                 traceback.print_exc()
-                rename_file_on_error(file, "(ERROR)", current_dir)
+                handle_file_error(file, current_dir)
                 fail_count += 1
                 print_summary_box("Cycle Summary", total, success_count, fail_count)
                 print_summary_box("Overall Session Summary", total, success_count, fail_count)
