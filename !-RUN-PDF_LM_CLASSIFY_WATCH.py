@@ -297,7 +297,7 @@ def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) 
     return None
 
 
-def handle_file_error(file_path: str, current_dir: str) -> None:
+def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     """
     Moves the file to '!-ERRORS' to prevent it from being endlessly processed.
     Also attempts to move related files sharing the same basename.
@@ -314,6 +314,12 @@ def handle_file_error(file_path: str, current_dir: str) -> None:
         shutil.move(os.path.join(current_dir, file_path), error_path)
         print_success(
             func_name, f"Moved main file to '!-ERRORS'")
+            
+        # Save the error log
+        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(error_log)
+        print_success(func_name, f"Saved error log to '{log_file_path}'")
 
         # Move related files
         for related_file in os.listdir(current_dir):
@@ -459,8 +465,9 @@ def main() -> None:
                         # 1. Extract Text
                         text = extract_pdf_text(file)
                         if not text:
+                            error_msg = "Failed to extract text or PDF is empty."
                             handle_file_error(
-                                file, current_dir)
+                                file, current_dir, error_msg)
                             cycle_fails += 1
                             print_summary_box(
                                 "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
@@ -477,8 +484,9 @@ def main() -> None:
                             f"LLM Processing Time: {elapsed_time:.2f}s")
 
                         if not llm_response:
+                            error_msg = "LLM returned empty or unparseable response."
                             handle_file_error(
-                                file, current_dir)
+                                file, current_dir, error_msg)
                             cycle_fails += 1
                             print_summary_box(
                                 "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
@@ -504,8 +512,9 @@ def main() -> None:
                                                   cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                                 time.sleep(2)
                         else:
+                            error_msg = "No suitable target directory found for file."
                             handle_file_error(
-                                file, current_dir)
+                                file, current_dir, error_msg)
                             cycle_fails += 1
                             print_summary_box(
                                 "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
@@ -522,10 +531,10 @@ def main() -> None:
                                           cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                         time.sleep(2)
                     except Exception as e:
+                        error_msg = f"Unexpected error processing '{file}': {e}\n{traceback.format_exc()}"
                         print_error(
-                            "Cycle Loop", f"Unexpected error processing '{file}': {e}")
-                        traceback.print_exc()
-                        handle_file_error(file, current_dir)
+                            "Cycle Loop", error_msg)
+                        handle_file_error(file, current_dir, error_msg)
                         cycle_fails += 1
                         print_summary_box(
                             "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)

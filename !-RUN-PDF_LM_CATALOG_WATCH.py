@@ -606,7 +606,7 @@ def get_files_to_process(current_dir: str) -> List[str]:
         return []
 
 
-def handle_unreadable_file(file: str, current_dir: str) -> None:
+def handle_unreadable_file(file: str, current_dir: str, error_log: str) -> None:
     """Moves an unreadable file to '!-ERRORS' to prevent looping."""
     try:
         log_step(f"Handling unreadable file: {file}")
@@ -618,6 +618,11 @@ def handle_unreadable_file(file: str, current_dir: str) -> None:
                     os.path.join(errors_dir, file))
         log_message(
             f"[{file}] -> Moved to '!-ERRORS' to prevent looping.")
+            
+        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(error_log)
+            
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
@@ -632,7 +637,7 @@ def handle_unreadable_file(file: str, current_dir: str) -> None:
         _failed_to_move_files.add(file)
 
 
-def handle_error_file(file: str, current_dir: str) -> None:
+def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
     """Moves a file that caused an error to '!-ERRORS' to prevent looping."""
     try:
         log_step(f"Handling error file: {file}")
@@ -644,6 +649,11 @@ def handle_error_file(file: str, current_dir: str) -> None:
                     os.path.join(errors_dir, file))
         log_message(
             f"[{file}] -> Moved to '!-ERRORS' to prevent looping on this file.")
+            
+        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(error_log)
+            
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
@@ -669,9 +679,9 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         text = extract_pdf_text(os.path.join(current_dir, file))
 
         if not text:
-            log_message(
-                f"[{file}] -> Failed: Could not extract text from the PDF.")
-            handle_unreadable_file(file, current_dir)
+            error_msg = f"[{file}] -> Failed: Could not extract text from the PDF."
+            log_message(error_msg)
+            handle_unreadable_file(file, current_dir, error_msg)
             return False
 
         try:
@@ -703,25 +713,9 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             print(f"  - {field}: {cleaned_result}")
 
         if extracted_data.get("Author", "EMPTY") == "EMPTY" and extracted_data.get("Series", "EMPTY") == "EMPTY" and extracted_data.get("Title", "EMPTY") == "EMPTY":
-            log_message(
-                f"[{file}] -> Skipped: No Author, Series, or Title found. Moving to !-ERRORS.")
-            errors_dir = os.path.join(current_dir, "!-ERRORS")
-            os.makedirs(errors_dir, exist_ok=True)
-            try:
-                shutil.move(os.path.join(current_dir, file),
-                            os.path.join(errors_dir, file))
-                base_name = os.path.splitext(file)[0]
-                for related_file in os.listdir(current_dir):
-                    if related_file != file and os.path.splitext(related_file)[0] == base_name:
-                        try:
-                            shutil.move(os.path.join(current_dir, related_file), os.path.join(
-                                errors_dir, related_file))
-                        except Exception:
-                            pass
-            except Exception as move_e:
-                log_message(f"[{file}] -> Error moving to !-ERRORS: {move_e}")
-                global _failed_to_move_files
-                _failed_to_move_files.add(file)
+            error_msg = f"[{file}] -> Skipped: No Author, Series, or Title found. Moving to !-ERRORS."
+            log_message(error_msg)
+            handle_error_file(file, current_dir, error_msg)
             return False
 
         fmt_author = format_author(extracted_data["Author"], current_nlp)
@@ -793,10 +787,9 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         log_message(f"[{file}] -> API Error: {ce}. Skipping to next file.")
         return False
     except Exception as e:
-        log_message(
-            f"[{file}] -> Unexpected error during file processing: {e}")
-        traceback.print_exc()
-        handle_error_file(file, current_dir)
+        error_msg = f"[{file}] -> Unexpected error during file processing: {e}\n{traceback.format_exc()}"
+        log_message(error_msg)
+        handle_error_file(file, current_dir, error_msg)
         return False
 
 

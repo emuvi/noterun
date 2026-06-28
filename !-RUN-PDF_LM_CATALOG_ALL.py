@@ -599,7 +599,7 @@ def get_files_to_process(current_dir: str) -> List[str]:
         return []
 
 
-def handle_unreadable_file(file: str, current_dir: str) -> None:
+def handle_unreadable_file(file: str, current_dir: str, error_log: str) -> None:
     """Moves an unreadable file to '!-ERRORS' to prevent looping."""
     try:
         log_step(f"Handling unreadable file: {file}")
@@ -610,6 +610,11 @@ def handle_unreadable_file(file: str, current_dir: str) -> None:
         shutil.move(os.path.join(current_dir, file),
                     os.path.join(errors_dir, file))
         log_message(f"[{file}] -> Moved to '!-ERRORS' to prevent looping.")
+        
+        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(error_log)
+            
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
@@ -622,7 +627,7 @@ def handle_unreadable_file(file: str, current_dir: str) -> None:
         log_step_error(f"Handling unreadable file: {file}", str(e))
 
 
-def handle_error_file(file: str, current_dir: str) -> None:
+def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
     """Moves a file that caused an error to '!-ERRORS' to prevent looping."""
     try:
         log_step(f"Handling error file: {file}")
@@ -634,6 +639,11 @@ def handle_error_file(file: str, current_dir: str) -> None:
                     os.path.join(errors_dir, file))
         log_message(
             f"[{file}] -> Moved to '!-ERRORS' to prevent looping on this file.")
+            
+        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(error_log)
+            
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
@@ -657,9 +667,9 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         text = extract_pdf_text(os.path.join(current_dir, file))
 
         if not text:
-            log_message(
-                f"[{file}] -> Failed: Could not extract text from the PDF.")
-            handle_unreadable_file(file, current_dir)
+            error_msg = f"[{file}] -> Failed: Could not extract text from the PDF."
+            log_message(error_msg)
+            handle_unreadable_file(file, current_dir, error_msg)
             return False
 
         try:
@@ -763,10 +773,9 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         log_message(f"[{file}] -> API Error: {ce}. Skipping to next file.")
         return False
     except Exception as e:
-        log_message(
-            f"[{file}] -> Unexpected error during file processing: {e}")
-        traceback.print_exc()
-        handle_error_file(file, current_dir)
+        error_msg = f"[{file}] -> Unexpected error during file processing: {e}\n{traceback.format_exc()}"
+        log_message(error_msg)
+        handle_error_file(file, current_dir, error_msg)
         return False
 
 

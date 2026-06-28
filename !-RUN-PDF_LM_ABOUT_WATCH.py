@@ -401,7 +401,7 @@ def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str
         return None
 
 
-def handle_file_error(file: str, current_dir: str) -> None:
+def handle_file_error(file: str, current_dir: str, error_log: str) -> None:
     """
     Moves a file and its sidecars to '!-ERRORS' to avoid infinite processing loops.
     """
@@ -419,6 +419,12 @@ def handle_file_error(file: str, current_dir: str) -> None:
 
         shutil.move(file, error_path)
         print_success(func_name, f"Moved main file to '{error_path}'")
+
+        # Save the error log
+        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(error_log)
+        print_success(func_name, f"Saved error log to '{log_file_path}'")
 
         # Rename sidecar files
         print_step(func_name, "Checking for sidecar files to move...")
@@ -525,12 +531,12 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
 
     text = extract_pdf_text(file)
     if not text:
-        handle_file_error(file, current_dir)
+        handle_file_error(file, current_dir, "Failed to extract text or PDF is empty.")
         return False
 
     prompt = build_summary_prompt(text)
     if not prompt:
-        handle_file_error(file, current_dir)
+        handle_file_error(file, current_dir, "Failed to build summary prompt.")
         return False
 
     start_time = time.time()
@@ -539,7 +545,7 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
     print_success("LLM Timing", f"LLM call completed in {elapsed_time:.2f}s")
 
     if not llm_response:
-        handle_file_error(file, current_dir)
+        handle_file_error(file, current_dir, "LLM returned an empty or unparseable response.")
         return False
 
     try:
@@ -551,18 +557,18 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
 
     new_base_name = sanitize_filename(llm_response)
     if not new_base_name:
-        handle_file_error(file, current_dir)
+        handle_file_error(file, current_dir, "Sanitized filename resulted in an empty string.")
         return False
 
     target_dir = os.path.dirname(current_dir)
     new_path = get_unique_new_path(target_dir, new_base_name, file)
     if not new_path:
-        handle_file_error(file, current_dir)
+        handle_file_error(file, current_dir, "Failed to generate unique new path.")
         return False
 
     success = rename_pdf_and_sidecars(current_dir, file, new_path)
     if not success:
-        handle_file_error(file, current_dir)
+        handle_file_error(file, current_dir, "Failed to rename main PDF and sidecars.")
         return False
 
     return True
@@ -641,10 +647,9 @@ def main() -> None:
                                               total_session_fails, total_session_success, total_session_fails)
 
                     except Exception as e:
-                        print_error(
-                            "Main Loop", f"Unexpected error while processing file '{file}': {e}")
-                        traceback.print_exc()
-                        handle_file_error(file, current_dir)
+                        error_msg = f"Unexpected error while processing file '{file}': {e}\n{traceback.format_exc()}"
+                        print_error("Main Loop", error_msg)
+                        handle_file_error(file, current_dir, error_msg)
                         cycle_fails += 1
                         total_session_fails += 1
                         print_summary_box(

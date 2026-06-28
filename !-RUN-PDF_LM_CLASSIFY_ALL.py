@@ -321,10 +321,11 @@ def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) 
     return None
 
 
-def handle_file_error(file_path: str, current_dir: str) -> None:
+def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     """
     Moves the file to '!-ERRORS' to prevent it from being endlessly processed.
     Also attempts to move related files sharing the same basename.
+    Saves a detailed log file of the error.
     """
     func_name = "Move On Error"
     print_step(
@@ -337,6 +338,12 @@ def handle_file_error(file_path: str, current_dir: str) -> None:
     try:
         shutil.move(os.path.join(current_dir, file_path), error_path)
         print_success(f"{func_name}: Moved main file to '!-ERRORS'")
+        
+        # Save the error log
+        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(error_log)
+        print_success(f"{func_name}: Saved error log to '{log_file_path}'")
 
         # Move related files
         for related_file in os.listdir(current_dir):
@@ -448,7 +455,8 @@ def process_all_pdfs() -> None:
                 # 1. Extract Text
                 text = extract_pdf_text(os.path.join(current_dir, file))
                 if not text:
-                    handle_file_error(file, current_dir)
+                    error_msg = "Failed to extract text or PDF is empty."
+                    handle_file_error(file, current_dir, error_msg)
                     fail_count += 1
                     print_summary_box("Cycle Summary", total,
                                       success_count, fail_count)
@@ -463,7 +471,8 @@ def process_all_pdfs() -> None:
                     log_message(f"LLM Processing Time: {elapsed_time:.2f}s")
 
                     if not llm_response:
-                        handle_file_error(file, current_dir)
+                        error_msg = "LLM returned empty or unparseable response."
+                        handle_file_error(file, current_dir, error_msg)
                         fail_count += 1
                         print_summary_box(
                             "Cycle Summary", total, success_count, fail_count)
@@ -488,7 +497,8 @@ def process_all_pdfs() -> None:
                                 print_summary_box(
                                     "Overall Session Summary", total, success_count, fail_count)
                         else:
-                            handle_file_error(file, current_dir)
+                            error_msg = "No suitable target directory found for file."
+                            handle_file_error(file, current_dir, error_msg)
                             fail_count += 1
                             print_summary_box(
                                 "Cycle Summary", total, success_count, fail_count)
@@ -503,9 +513,9 @@ def process_all_pdfs() -> None:
                 print_summary_box("Overall Session Summary",
                                   total, success_count, fail_count)
             except Exception as e:
-                print_error(f"Unexpected error processing '{file}': {e}")
-                traceback.print_exc()
-                handle_file_error(file, current_dir)
+                error_msg = f"Unexpected error processing '{file}': {e}\n{traceback.format_exc()}"
+                print_error(error_msg)
+                handle_file_error(file, current_dir, error_msg)
                 fail_count += 1
                 print_summary_box("Cycle Summary", total,
                                   success_count, fail_count)

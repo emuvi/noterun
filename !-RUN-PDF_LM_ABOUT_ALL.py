@@ -1,7 +1,9 @@
 import importlib
 import os
 import re
+import shutil
 import sys
+import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -93,6 +95,41 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         print("╚" + "═" * (box_width - 2) + "╝\n")
     except Exception as e:
         print_error(f"Failed to print summary box: {e}")
+
+
+def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
+    """
+    Moves the file to '!-ERRORS' to prevent it from being endlessly processed.
+    Also attempts to move related files sharing the same basename.
+    Saves a detailed log file of the error.
+    """
+    print_step(f"Moving '{file_path}' to '!-ERRORS'...")
+    base_name, ext = os.path.splitext(file_path)
+    errors_dir = os.path.join(current_dir, "!-ERRORS")
+    os.makedirs(errors_dir, exist_ok=True)
+    error_path = os.path.join(errors_dir, file_path)
+
+    try:
+        shutil.move(os.path.join(current_dir, file_path), error_path)
+        print_success(f"Moved main file to '!-ERRORS'")
+        
+        # Save the error log
+        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(error_log)
+        print_success(f"Saved error log to '{log_file_path}'")
+
+        # Move related files
+        for related_file in os.listdir(current_dir):
+            if related_file != file_path and os.path.splitext(related_file)[0] == base_name:
+                try:
+                    shutil.move(os.path.join(current_dir, related_file),
+                                os.path.join(errors_dir, related_file))
+                    print_success(f"Moved related file '{related_file}' to '!-ERRORS'")
+                except Exception as e:
+                    print_error(f"Failed to move related file {related_file}: {e}")
+    except Exception as e:
+        print_error(f"Failed to move main file {file_path}: {e}")
 
 # --- NLP Functions ---
 
@@ -638,8 +675,9 @@ def process_all_pdfs() -> None:
                 text = extract_pdf_text(file_path)
 
                 if not text:
-                    print_error(
-                        f"Failed to extract text or PDF is empty for: {filename}")
+                    error_msg = f"Failed to extract text or PDF is empty for: {filename}"
+                    print_error(error_msg)
+                    handle_file_error(filename, current_dir, error_msg)
                     fail_count += 1
                     print_summary_box("Cycle Summary", total,
                                       success_count, fail_count)
@@ -654,16 +692,19 @@ def process_all_pdfs() -> None:
                         success_count += 1
                         print_success(f"Fully processed {filename}")
                     else:
+                        error_msg = f"Failed to rename and fully process {filename}"
+                        print_error(error_msg)
+                        handle_file_error(filename, current_dir, error_msg)
                         fail_count += 1
-                        print_error(f"Failed to fully process {filename}")
                         print_summary_box(
                             "Cycle Summary", total, success_count, fail_count)
                         print_summary_box(
                             "Overall Session Summary", total, success_count, fail_count)
 
             except Exception as file_err:
-                print_error(
-                    f"Unexpected error processing file '{filename}': {file_err}")
+                error_msg = f"Unexpected error processing file '{filename}': {file_err}\n{traceback.format_exc()}"
+                print_error(error_msg)
+                handle_file_error(filename, current_dir, error_msg)
                 fail_count += 1
                 print_summary_box("Cycle Summary", total,
                                   success_count, fail_count)
