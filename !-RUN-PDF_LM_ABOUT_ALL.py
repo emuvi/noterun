@@ -225,17 +225,17 @@ def get_pages_to_extract(total_pages: int) -> List[int]:
         f"Determining pages to extract for a PDF with {total_pages} total pages.")
     pages_to_extract: List[int] = []
     try:
-        if total_pages > 99:
+        if total_pages > 33:
             print_step(
-                "PDF has > 99 pages. Selecting first 33, middle 33, and last 33.")
-            mid_start = (total_pages // 2) - 16
+                "PDF has > 33 pages. Selecting first 11, middle 11, and last 11.")
+            mid_start = (total_pages // 2) - 5
             pages_to_extract = sorted(set(
-                list(range(33)) +
-                list(range(mid_start, mid_start + 33)) +
-                list(range(total_pages - 33, total_pages))
+                list(range(11)) +
+                list(range(mid_start, mid_start + 11)) +
+                list(range(total_pages - 11, total_pages))
             ))
         else:
-            print_step("PDF has <= 99 pages. Selecting all pages.")
+            print_step("PDF has <= 33 pages. Selecting all pages.")
             pages_to_extract = list(range(total_pages))
 
         print_success(

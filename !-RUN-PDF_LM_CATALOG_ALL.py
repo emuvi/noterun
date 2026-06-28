@@ -176,12 +176,12 @@ def extract_pdf_text(file_path: str) -> str:
             reader = PyPDF2.PdfReader(pdf_file)
             total_pages = len(reader.pages)
 
-            if total_pages > 99:
-                mid_start = (total_pages // 2) - 16
+            if total_pages > 33:
+                mid_start = (total_pages // 2) - 5
                 pages_to_extract = sorted(set(
-                    list(range(33)) +
-                    list(range(mid_start, mid_start + 33)) +
-                    list(range(total_pages - 33, total_pages))
+                    list(range(11)) +
+                    list(range(mid_start, mid_start + 11)) +
+                    list(range(total_pages - 11, total_pages))
                 ))
             else:
                 pages_to_extract = list(range(total_pages))
