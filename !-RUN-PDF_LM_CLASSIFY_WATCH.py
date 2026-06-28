@@ -58,11 +58,11 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         box_width = 50
         lines = [
             "\n" + "╔" + "═" * (box_width - 2) + "╗",
-            "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
+            "║" + f"{title}".center(box_width - 2) + "║",
             "╠" + "═" * (box_width - 2) + "╣",
-            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
-            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║",
-            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+            "║" + f"Total Processed: {total}".ljust(box_width - 2) + "║",
+            "║" + f"Successes:       {success}".ljust(box_width - 2) + "║",
+            "║" + f"Failures:        {fails}".ljust(box_width - 2) + "║",
             "╚" + "═" * (box_width - 2) + "╝\n"
         ]
         for line in lines:
