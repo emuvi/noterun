@@ -113,72 +113,23 @@ except Exception as e:
     client = None  # type: ignore
 
 FIELD_PROMPTS: Dict[str, str] = {
-    "Author": """TASK: Extract the MAIN AUTHOR of the provided document. The author MUST be the single main entity that created the document.
+    "Author": """Extract the primary author (person or institution). 
+Rules: Return only the first/main author. Omit titles (Dr., Prof.). Use well-known acronyms for institutions (e.g., WHO). Return EMPTY if none.""",
 
-RULES:
-1. Look for the primary creator, writer, or responsible entity of the text. This must be the single main entity responsible for the document's creation.
-2. If it is a PERSON, provide their full name (e.g., "John Doe", "Maria Silva").
-3. If there are MULTIPLE authors, provide ONLY the first or principal author. Ignore the rest.
-4. If there is NO person listed, identify the INSTITUTION or ORGANIZATION that produced the document (e.g., "World Health Organization", "Ministério da Educação").
-5. If using an institution's name and an acronym is widely known or provided in the text, use ONLY the acronym (e.g., "WHO", "MEC").
-6. Do not include titles like "Dr.", "Prof.", "Author:", etc.
-7. If absolutely no author or institution can be found, you MUST return the exact word: EMPTY""",
+    "Series": """Extract the macro-group or collection name (e.g., 'Nature', 'The Lord of the Rings'). 
+Rules: Do not include the main title or publisher name. Return EMPTY if the document is standalone.""",
 
-    "Series": """TASK: Extract the MACRO-GROUP, COLLECTION, SERIES, or PARENT CONTAINER to which this document belongs.
+    "Volume": """Extract the volume, issue, or sequence number within its series. 
+Rules: Return the specific identifier (e.g., 'Vol. 2', 'Issue 4'). Ignore dates unless they act as the primary identifier. Return EMPTY if none.""",
 
-PRINCIPLE: 
-Think of document hierarchy. If this individual document is a "Child", what is its "Parent"? Is it one part of a larger, named grouping of works? We are looking for ANY overarching collection that groups multiple independent documents together.
+    "Title": """Extract the main title. 
+Rules: Exclude the subtitle, author, and labels like 'Title:'. Return EMPTY if none found.""",
 
-RULES:
-1. Identify the name of the overarching group. Examples include:
-   - Book series or franchises (e.g., "The Lord of the Rings", "Série Vaga-Lume")
-   - Journals, magazines, or periodicals (e.g., "Nature", "Revista Brasileira de Direito")
-   - Publisher collections or editorial lines (e.g., "Coleção Primeiros Passos", "Very Short Introductions")
-   - Corporate, government, or academic report series (e.g., "Working Paper Series", "Technical Reports")
-2. Extract ONLY the name of this macro-group.
-3. Do NOT include the specific main title of the individual document itself.
-4. Do NOT include the publisher's name unless it is intrinsically part of the collection's formal name.
-5. If the document is completely standalone and does not indicate belonging to any broader named group, you MUST return the exact word: EMPTY""",
+    "Subtitle": """Extract the secondary/explanatory subtitle. 
+Rules: Exclude labels like 'Subtitle:'. Return EMPTY if no clear subtitle exists.""",
 
-    "Volume": """TASK: Extract the VOLUME, ISSUE, SEQUENCE, or NUMBERING of the provided document.
-
-PRINCIPLE:
-If this document belongs to a larger macro-group or series (identified as: "the extracted series"), what is this document's specific position, number, or sequential identifier within that group? We are looking for the exact indicator that places this "Child" document in order within its "Parent" container. 
-
-RULES:
-1. Look for indicators of sequence, volume, or numbering. Examples include:
-   - Volume numbers (e.g., "Volume 1", "Vol. 2")
-   - Journal issues (e.g., "Issue 4", "Nº 12", "Fascículo 3")
-   - Part or book numbers in a series (e.g., "Book 3", "Parte II")
-2. The overarching series/macro-group is "the extracted series". Focus on finding the numbering that corresponds to this group.
-3. Extract the numeric or alphanumeric identifier exactly as it represents the sequence.
-4. Do NOT include dates or years unless they act as the primary issue identifier.
-5. If there is no volume, issue, or sequence numbering evident in the document, you MUST return the exact word: EMPTY""",
-
-    "Title": """TASK: Extract the MAIN TITLE of the provided document.
-
-RULES:
-1. The main title is the primary name of the book, article, report, or document.
-2. Do NOT include the Subtitle.
-3. Do NOT include the author's name.
-4. Do NOT include the word "Title:" in your output.
-5. If absolutely no title can be identified, you MUST return the exact word: EMPTY""",
-
-    "Subtitle": """TASK: Extract the SUBTITLE of the provided document.
-
-RULES:
-1. The subtitle is the secondary, explanatory title that usually follows the main title, often separated by a colon (:), dash (-), or placed on a new line in smaller text.
-2. Example: If the full title is "Deep Learning: A Comprehensive Guide", the main title is "Deep Learning" and the subtitle is "A Comprehensive Guide". You must extract ONLY "A Comprehensive Guide".
-3. Do NOT include the word "Subtitle:" in your output.
-4. If the document does not have a clear subtitle, you MUST return the exact word: EMPTY""",
-
-    "Edition": """TASK: Extract the EDITION information of the provided document.
-
-RULES:
-1. Look for text indicating the version or iteration of the document, such as "1st Edition", "2ª Edição", "Revised Edition", "Edição Revista e Ampliada", "3rd ed.".
-2. Extract only the specific edition phrase.
-3. Do NOT include publication dates, volume numbers, or publisher names.
-4. If there is no edition information evident in the document, you MUST return the exact word: EMPTY"""
+    "Edition": """Extract the edition version (e.g., '1st Edition', 'Revised'). 
+Rules: Exclude dates, volumes, or publishers. Return EMPTY if none."""
 }
 
 
