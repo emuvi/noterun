@@ -18,26 +18,32 @@ import traceback
 # Global cache for loaded Spacy models
 nlp_models_cache: Dict[str, Any] = {}
 
+
 def get_current_time() -> str:
     """Returns the current time formatted as HH:MM:SS."""
     return datetime.now().strftime('%H:%M:%S')
+
 
 def log_message(message: str) -> None:
     """Logs a message to the console with a timestamp."""
     print(f"[{get_current_time()}] {message}")
 
+
 def log_step(step_name: str, status: str = "STARTING") -> None:
     """Logs a specific step of a function."""
     print(f"  [>] {step_name}... [{status}]")
+
 
 def log_step_success(step_name: str, message: str = "") -> None:
     """Logs the success of a specific step."""
     msg = f" - {message}" if message else ""
     print(f"  [✓] {step_name}... [SUCCESS]{msg}")
 
+
 def log_step_error(step_name: str, error_msg: str) -> None:
     """Logs an error occurring in a specific step."""
     print(f"  [X] {step_name}... [ERROR: {error_msg}]")
+
 
 def print_visual_summary(processed: int, failed: int, total_processed: int, total_failed: int) -> None:
     """Prints a clear visual representation of the summary at the end of a cycle."""
@@ -58,6 +64,7 @@ def print_visual_summary(processed: int, failed: int, total_processed: int, tota
     except Exception as e:
         log_step_error("Printing visual summary", str(e))
 
+
 def load_spacy_model(lang_code: str) -> Any:
     """Loads spacy and the appropriate NLP model based on language."""
     spacy_models_map: Dict[str, str] = {
@@ -73,29 +80,35 @@ def load_spacy_model(lang_code: str) -> Any:
         "xx": "xx_ent_wiki_sm"
     }
     model_name = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
-    
+
     try:
         log_step(f"Loading Spacy model for language '{lang_code}'")
-        
+
         if model_name in nlp_models_cache:
-            log_step_success(f"Loading Spacy model for language '{lang_code}'", f"Found in cache: {model_name}")
+            log_step_success(
+                f"Loading Spacy model for language '{lang_code}'", f"Found in cache: {model_name}")
             return nlp_models_cache[model_name]
 
         try:
             model_module = importlib.import_module(model_name)
             model = model_module.load()
             nlp_models_cache[model_name] = model
-            log_step_success(f"Loading Spacy model for language '{lang_code}'", f"Loaded dynamically: {model_name}")
+            log_step_success(
+                f"Loading Spacy model for language '{lang_code}'", f"Loaded dynamically: {model_name}")
             return model
         except (ImportError, AttributeError):
             model = spacy.load(model_name)
             nlp_models_cache[model_name] = model
-            log_step_success(f"Loading Spacy model for language '{lang_code}'", f"Loaded via spacy.load: {model_name}")
+            log_step_success(
+                f"Loading Spacy model for language '{lang_code}'", f"Loaded via spacy.load: {model_name}")
             return model
     except Exception as e:
-        log_step_error(f"Loading Spacy model for language '{lang_code}'", str(e))
-        log_message(f"Erro: Modelo '{model_name}' do spacy não pode ser carregado ({e}). Por favor, execute '!-LIB-Install.py' primeiro.")
+        log_step_error(
+            f"Loading Spacy model for language '{lang_code}'", str(e))
+        log_message(
+            f"Erro: Modelo '{model_name}' do spacy não pode ser carregado ({e}). Por favor, execute '!-LIB-Install.py' primeiro.")
         raise RuntimeError(f"Spacy model '{model_name}' not loaded: {e}")
+
 
 # Initialize the LM Studio client pointing to the local LM Studio server.
 try:
@@ -105,7 +118,7 @@ try:
     log_step_success("Initializing LM Studio client")
 except Exception as e:
     log_step_error("Initializing LM Studio client", str(e))
-    client = None # type: ignore
+    client = None  # type: ignore
 
 FIELD_PROMPTS: Dict[str, str] = {
     "Author": """TASK: Extract the MAIN AUTHOR of the provided document. The author MUST be the single main entity that created the document.
@@ -176,6 +189,7 @@ RULES:
 4. If there is no edition information evident in the document, you MUST return the exact word: EMPTY"""
 }
 
+
 def extract_pdf_text(file_path: str) -> str:
     """Extracts text content from a PDF file using PyPDF2."""
     text = ""
@@ -217,7 +231,7 @@ def query_model_single_call(pdf_text: str, fields: List[str], prompts: Dict[str,
         master_prompt += "### FIELD RULES ###\n"
         for field in fields:
             master_prompt += f"--- {field.upper()} ---\n{prompts[field]}\n\n"
-            
+
         master_prompt += """### OUTPUT FORMAT ###
 You MUST respond with ONLY a valid JSON object. Do not wrap the JSON in markdown blocks (like ```json), just output the raw JSON object.
 Do not include any conversational text, explanations, or formatting.
@@ -225,7 +239,7 @@ The JSON object must contain exactly the following keys:
 """
         for field in fields:
             master_prompt += f'- "{field}"\n'
-            
+
         master_prompt += """
 The value for each key must be the extracted string exactly as found in the text (unless formatting is instructed), or "EMPTY" if no value was found.
 
@@ -242,10 +256,10 @@ Example Response:
 ### DOCUMENT TEXT ###
 """
         full_prompt = f"{master_prompt}\n{pdf_text}"
-        
+
         if client is None:
             raise ConnectionError("LM Studio client is not initialized.")
-            
+
         response: ChatResponse = client.chat(
             system_prompt="You are a helpful assistant specialized in extracting specific information from documents into JSON format. You only respond with raw, valid JSON.",
             input_data=full_prompt,
@@ -256,11 +270,12 @@ Example Response:
                 if item.get("type") == "message":
                     content = item.get("content")
                     break
-                    
+
         if not content:
-            log_step_error("Querying AI model for fields", "Empty response content")
+            log_step_error("Querying AI model for fields",
+                           "Empty response content")
             return {f: "EMPTY" for f in fields}
-            
+
         content = content.strip()
         if content.startswith("```json"):
             content = content[7:]
@@ -269,9 +284,9 @@ Example Response:
         if content.endswith("```"):
             content = content[:-3]
         content = content.strip()
-        
+
         extracted_data = json.loads(content)
-        
+
         result = {}
         for field in fields:
             val = extracted_data.get(field, "EMPTY")
@@ -280,13 +295,15 @@ Example Response:
             val = val.strip().replace('\n', ' ').replace('\r', '')
             val = val.strip('"').strip("'")
             result[field] = val if val else "EMPTY"
-            
+
         log_step_success("Querying AI model for fields")
         return result
-        
+
     except json.JSONDecodeError as e:
-        log_step_error("Querying AI model for fields", f"JSON Decode Error: {e}")
-        log_message(f"Error decoding JSON from model response: {e}\nResponse was:\n{content}")
+        log_step_error("Querying AI model for fields",
+                       f"JSON Decode Error: {e}")
+        log_message(
+            f"Error decoding JSON from model response: {e}\nResponse was:\n{content}")
         return {f: "EMPTY" for f in fields}
     except Exception as e:
         log_step_error("Querying AI model for fields", f"API Error: {e}")
@@ -330,7 +347,7 @@ def format_author(text: str, nlp_model: Any) -> str:
             res = f"{last_name}, {' '.join(initials)}"
         else:
             res = last_name
-        
+
         log_step_success("Formatting author", f"Result: {res}")
         return res
     except Exception as e:
@@ -395,7 +412,8 @@ def abbreviate_words(text: str, nlp_model: Any, target_pos: List[str], preserve_
             word = token.text
             has_alpha = any(c.isalpha() for c in word)
 
-            is_candidate = token.pos_ in target_pos and has_alpha and len(word) > 2
+            is_candidate = token.pos_ in target_pos and has_alpha and len(
+                word) > 2
 
             if has_alpha and preserve_first and not first_alpha_seen:
                 is_candidate = False
@@ -418,6 +436,7 @@ def assemble_filename(author: str, series: str, volume: str, title: str, subtitl
     """Assembles the final filename string applying progressive abbreviation rules."""
     try:
         log_step("Assembling filename")
+
         def build_name(t_ser: str, t_vol: str, t_title: str, t_sub: str, t_ed: str) -> str:
             parts = []
             if author:
@@ -534,10 +553,12 @@ def should_process(file_name: str) -> bool:
     try:
         log_step("Checking if file should be processed")
         if not file_name.startswith("RAND "):
-            log_step_success("Checking if file should be processed", "False: Does not start with RAND")
+            log_step_success("Checking if file should be processed",
+                             "False: Does not start with RAND")
             return False
         if "(FAILED)" in file_name or "(UNREADABLE)" in file_name or "(ERROR)" in file_name:
-            log_step_success("Checking if file should be processed", "False: Already marked as failed/unreadable/error")
+            log_step_success("Checking if file should be processed",
+                             "False: Already marked as failed/unreadable/error")
             return False
         log_step_success("Checking if file should be processed", "True")
         return True
@@ -561,8 +582,10 @@ def remove_overlapping_phrases(current_text: str, previous_text: str) -> str:
             log_step_success("Removing overlapping phrases", "No words found")
             return current_text
 
-        matcher = difflib.SequenceMatcher(None, [w.lower() for w in curr_words], prev_words)
-        match = matcher.find_longest_match(0, len(curr_words), 0, len(prev_words))
+        matcher = difflib.SequenceMatcher(
+            None, [w.lower() for w in curr_words], prev_words)
+        match = matcher.find_longest_match(
+            0, len(curr_words), 0, len(prev_words))
 
         cleaned_text = current_text
         if match.size > 0:
@@ -579,17 +602,22 @@ def remove_overlapping_phrases(current_text: str, previous_text: str) -> str:
                     is_significant = True
 
             if is_significant:
-                regex_pattern = r'[\s\-:.,]*'.join([re.escape(w) for w in matched_words])
-                cleaned_text = re.sub(regex_pattern, "", cleaned_text, count=1, flags=re.IGNORECASE).strip()
+                regex_pattern = r'[\s\-:.,]*'.join([re.escape(w)
+                                                   for w in matched_words])
+                cleaned_text = re.sub(
+                    regex_pattern, "", cleaned_text, count=1, flags=re.IGNORECASE).strip()
 
-        cleaned_text = re.sub(r'^[-\s:.,]+|[-\s:.,]+$', '', cleaned_text).strip()
+        cleaned_text = re.sub(r'^[-\s:.,]+|[-\s:.,]+$',
+                              '', cleaned_text).strip()
 
         if not cleaned_text:
-            log_step_success("Removing overlapping phrases", "Cleaned to empty")
+            log_step_success("Removing overlapping phrases",
+                             "Cleaned to empty")
             return "EMPTY"
 
         if cleaned_text != current_text:
-            cleaned_text = remove_overlapping_phrases(cleaned_text, previous_text)
+            cleaned_text = remove_overlapping_phrases(
+                cleaned_text, previous_text)
 
         log_step_success("Removing overlapping phrases")
         return cleaned_text
@@ -609,7 +637,8 @@ def clean_repetitive_fields(current_field: str, raw_result: str, extracted_data:
         cleaned_result = raw_result
         for prev_field, prev_value in extracted_data.items():
             if prev_field != "Author" and prev_value != "EMPTY":
-                cleaned_result = remove_overlapping_phrases(cleaned_result, prev_value)
+                cleaned_result = remove_overlapping_phrases(
+                    cleaned_result, prev_value)
                 if cleaned_result == "EMPTY":
                     break
 
@@ -625,9 +654,12 @@ def get_files_to_process(current_dir: str) -> List[str]:
     try:
         log_step("Scanning for PDF files")
         pdf_files = glob.glob(os.path.join(current_dir, "*.pdf"))
-        files_to_process = [os.path.basename(f) for f in pdf_files if os.path.basename(f).startswith("RAND ")]
-        files_to_process = sorted([f for f in files_to_process if "(UNREADABLE)" not in f and "(FAILED)" not in f and "(ERROR)" not in f])
-        log_step_success("Scanning for PDF files", f"Found {len(files_to_process)} file(s)")
+        files_to_process = [os.path.basename(
+            f) for f in pdf_files if os.path.basename(f).startswith("RAND ")]
+        files_to_process = sorted(
+            [f for f in files_to_process if "(UNREADABLE)" not in f and "(FAILED)" not in f and "(ERROR)" not in f])
+        log_step_success("Scanning for PDF files",
+                         f"Found {len(files_to_process)} file(s)")
         return files_to_process
     except Exception as e:
         log_step_error("Scanning for PDF files", str(e))
@@ -635,21 +667,24 @@ def get_files_to_process(current_dir: str) -> List[str]:
 
 
 def handle_unreadable_file(file: str, current_dir: str) -> None:
-    """Renames an unreadable file to prevent looping and moves to '!- ERRORS'."""
+    """Renames an unreadable file to prevent looping and moves to '!-ERRORS'."""
     try:
         log_step(f"Handling unreadable file: {file}")
         base_name, ext = os.path.splitext(file)
         error_name = f"{base_name} (UNREADABLE){ext}"
-        errors_dir = os.path.join(current_dir, "!- ERRORS")
+        errors_dir = os.path.join(current_dir, "!-ERRORS")
         os.makedirs(errors_dir, exist_ok=True)
 
-        shutil.move(os.path.join(current_dir, file), os.path.join(errors_dir, error_name))
-        log_message(f"[{file}] -> Renamed to {error_name} and moved to '!- ERRORS' to prevent looping.")
+        shutil.move(os.path.join(current_dir, file),
+                    os.path.join(errors_dir, error_name))
+        log_message(
+            f"[{file}] -> Renamed to {error_name} and moved to '!-ERRORS' to prevent looping.")
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 rel_ext = os.path.splitext(related_file)[1]
                 try:
-                    shutil.move(os.path.join(current_dir, related_file), os.path.join(errors_dir, f"{base_name} (UNREADABLE){rel_ext}"))
+                    shutil.move(os.path.join(current_dir, related_file), os.path.join(
+                        errors_dir, f"{base_name} (UNREADABLE){rel_ext}"))
                 except Exception:
                     pass
         log_step_success(f"Handling unreadable file: {file}")
@@ -658,21 +693,24 @@ def handle_unreadable_file(file: str, current_dir: str) -> None:
 
 
 def handle_error_file(file: str, current_dir: str) -> None:
-    """Renames a file that caused an error to prevent looping and moves to '!- ERRORS'."""
+    """Renames a file that caused an error to prevent looping and moves to '!-ERRORS'."""
     try:
         log_step(f"Handling error file: {file}")
         base_name, ext = os.path.splitext(file)
         error_name = f"{base_name} (ERROR){ext}"
-        errors_dir = os.path.join(current_dir, "!- ERRORS")
+        errors_dir = os.path.join(current_dir, "!-ERRORS")
         os.makedirs(errors_dir, exist_ok=True)
 
-        shutil.move(os.path.join(current_dir, file), os.path.join(errors_dir, error_name))
-        log_message(f"[{file}] -> Renamed to {error_name} and moved to '!- ERRORS' to prevent looping on this file.")
+        shutil.move(os.path.join(current_dir, file),
+                    os.path.join(errors_dir, error_name))
+        log_message(
+            f"[{file}] -> Renamed to {error_name} and moved to '!-ERRORS' to prevent looping on this file.")
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 rel_ext = os.path.splitext(related_file)[1]
                 try:
-                    shutil.move(os.path.join(current_dir, related_file), os.path.join(errors_dir, f"{base_name} (ERROR){rel_ext}"))
+                    shutil.move(os.path.join(current_dir, related_file), os.path.join(
+                        errors_dir, f"{base_name} (ERROR){rel_ext}"))
                 except Exception:
                     pass
         log_step_success(f"Handling error file: {file}")
@@ -691,7 +729,8 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         text = extract_pdf_text(os.path.join(current_dir, file))
 
         if not text:
-            log_message(f"[{file}] -> Failed: Could not extract text from the PDF.")
+            log_message(
+                f"[{file}] -> Failed: Could not extract text from the PDF.")
             handle_unreadable_file(file, current_dir)
             return False
 
@@ -700,39 +739,45 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         try:
             log_step("Detecting language")
             lang_code = detect(text)
-            log_step_success("Detecting language", f"Language detected: {lang_code}")
+            log_step_success("Detecting language",
+                             f"Language detected: {lang_code}")
         except Exception as e:
             lang_code = "xx"
-            log_step_error("Detecting language", f"Could not detect language ({e}), defaulting to (xx)")
+            log_step_error(
+                "Detecting language", f"Could not detect language ({e}), defaulting to (xx)")
 
         current_nlp = load_spacy_model(lang_code)
 
         log_message(f"[{file}] -> Analyzing fields in a single call...")
         start_time = time.time()
-        
+
         raw_extracted_data = query_model_single_call(text, fields, prompts)
-        
+
         elapsed_time = time.time() - start_time
         log_message(f"[{file}] -> LLM call completed in {elapsed_time:.2f}s")
-        
+
         extracted_data: Dict[str, str] = {}
         for field in fields:
             raw_result = raw_extracted_data.get(field, "EMPTY")
-            cleaned_result = clean_repetitive_fields(field, raw_result, extracted_data)
+            cleaned_result = clean_repetitive_fields(
+                field, raw_result, extracted_data)
             extracted_data[field] = cleaned_result
             print(f"  - {field}: {cleaned_result}")
 
         if extracted_data.get("Author", "EMPTY") == "EMPTY" and extracted_data.get("Series", "EMPTY") == "EMPTY" and extracted_data.get("Title", "EMPTY") == "EMPTY":
-            log_message(f"[{file}] -> Skipped: No Author, Series, or Title found. Moving to !-ERRORS.")
+            log_message(
+                f"[{file}] -> Skipped: No Author, Series, or Title found. Moving to !-ERRORS.")
             errors_dir = os.path.join(current_dir, "!-ERRORS")
             os.makedirs(errors_dir, exist_ok=True)
             try:
-                shutil.move(os.path.join(current_dir, file), os.path.join(errors_dir, file))
+                shutil.move(os.path.join(current_dir, file),
+                            os.path.join(errors_dir, file))
                 base_name = os.path.splitext(file)[0]
                 for related_file in os.listdir(current_dir):
                     if related_file != file and os.path.splitext(related_file)[0] == base_name:
                         try:
-                            shutil.move(os.path.join(current_dir, related_file), os.path.join(errors_dir, related_file))
+                            shutil.move(os.path.join(current_dir, related_file), os.path.join(
+                                errors_dir, related_file))
                         except Exception:
                             pass
             except Exception as move_e:
@@ -740,16 +785,21 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             return False
 
         fmt_author = format_author(extracted_data["Author"], current_nlp)
-        fmt_series = format_title_case_nlp(extracted_data["Series"], current_nlp)
-        fmt_volume = format_title_case_nlp(extracted_data["Volume"], current_nlp)
+        fmt_series = format_title_case_nlp(
+            extracted_data["Series"], current_nlp)
+        fmt_volume = format_title_case_nlp(
+            extracted_data["Volume"], current_nlp)
         fmt_title = format_title_case_nlp(extracted_data["Title"], current_nlp)
-        fmt_subtitle = format_title_case_nlp(extracted_data["Subtitle"], current_nlp)
-        fmt_edition = format_title_case_nlp(extracted_data["Edition"], current_nlp)
+        fmt_subtitle = format_title_case_nlp(
+            extracted_data["Subtitle"], current_nlp)
+        fmt_edition = format_title_case_nlp(
+            extracted_data["Edition"], current_nlp)
 
         if not fmt_title:
             fmt_title = "No Title"
 
-        new_base_name = assemble_filename(fmt_author, fmt_series, fmt_volume, fmt_title, fmt_subtitle, fmt_edition, current_nlp)
+        new_base_name = assemble_filename(
+            fmt_author, fmt_series, fmt_volume, fmt_title, fmt_subtitle, fmt_edition, current_nlp)
 
         new_base_name = re.sub(r'[\\/*?:"<>|]', "_", new_base_name)
         new_base_name = re.sub(r'_{2,}', "_", new_base_name)
@@ -772,22 +822,26 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             log_step("Renaming file")
             shutil.move(old_path, new_path)
             log_step_success("Renaming file", f"Renamed to: '{new_file_name}'")
-            
+
             orig_base_name = os.path.splitext(file)[0]
             final_base_name = os.path.splitext(new_file_name)[0]
-            
+
             for related_file in os.listdir(current_dir):
                 if related_file == file:
                     continue
                 rel_base, rel_ext = os.path.splitext(related_file)
                 if rel_base == orig_base_name:
-                    related_target = os.path.join(target_dir, f"{final_base_name}{rel_ext}")
+                    related_target = os.path.join(
+                        target_dir, f"{final_base_name}{rel_ext}")
                     try:
                         log_step(f"Renaming related file: {related_file}")
-                        shutil.move(os.path.join(current_dir, related_file), related_target)
-                        log_step_success(f"Renaming related file: {related_file}", f"Renamed to {os.path.basename(related_target)}")
+                        shutil.move(os.path.join(
+                            current_dir, related_file), related_target)
+                        log_step_success(
+                            f"Renaming related file: {related_file}", f"Renamed to {os.path.basename(related_target)}")
                     except Exception as e:
-                        log_step_error(f"Renaming related file: {related_file}", str(e))
+                        log_step_error(
+                            f"Renaming related file: {related_file}", str(e))
 
             return True
         except Exception as e:
@@ -799,7 +853,8 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         log_message(f"[{file}] -> API Error: {ce}. Skipping to next file.")
         return False
     except Exception as e:
-        log_message(f"[{file}] -> Unexpected error during file processing: {e}")
+        log_message(
+            f"[{file}] -> Unexpected error during file processing: {e}")
         traceback.print_exc()
         handle_error_file(file, current_dir)
         return False
@@ -810,7 +865,8 @@ def main_loop() -> None:
     fields = ["Author", "Series", "Volume", "Title", "Subtitle", "Edition"]
     prompts = FIELD_PROMPTS
 
-    proceed = input("Do you want to proceed with AI renaming all PDF files starting with 'RAND ' in a single LLM call? (yes/no): ").strip().lower()
+    proceed = input(
+        "Do you want to proceed with AI renaming all PDF files starting with 'RAND ' in a single LLM call? (yes/no): ").strip().lower()
     if proceed != 'yes':
         log_message("Operation canceled.")
         return
@@ -821,14 +877,15 @@ def main_loop() -> None:
     waiting = False
     total_processed_files = 0
     total_failed_files = 0
-    
+
     while True:
         try:
             current_dir = os.getcwd()
             files_to_process = get_files_to_process(current_dir)
 
             if not files_to_process:
-                print(f"\r[{get_current_time()}] ⏳ Waiting for new PDF files... (Checking every 5s)", end="", flush=True)
+                print(
+                    f"\r[{get_current_time()}] ⏳ Waiting for new PDF files... (Checking every 5s)", end="", flush=True)
                 waiting = True
                 time.sleep(5)
                 continue
@@ -840,32 +897,39 @@ def main_loop() -> None:
             try:
                 log_step("Checking LM Studio connection")
                 if client is None:
-                    raise ConnectionError("LM Studio client is not initialized.")
+                    raise ConnectionError(
+                        "LM Studio client is not initialized.")
                 _models: ListModelsResponse = client.list_models()
                 log_step_success("Checking LM Studio connection")
             except Exception as e:
                 log_step_error("Checking LM Studio connection", str(e))
-                log_message("Error: Could not connect to LM Studio server. Retrying in 10s...")
+                log_message(
+                    "Error: Could not connect to LM Studio server. Retrying in 10s...")
                 time.sleep(10)
                 continue
 
             processed_files = 0
             failed_files = 0
             total_files_in_cycle = len(files_to_process)
-            
+
             for index, file in enumerate(files_to_process):
                 try:
-                    progress_percentage = ((index + 1) / total_files_in_cycle) * 100
-                    print(f"\n[{get_current_time()}] [PROGRESS] Processing file {index + 1} of {total_files_in_cycle} ({progress_percentage:.1f}%)")
-                    
-                    success = process_single_file(file, current_dir, fields, prompts)
-                    
+                    progress_percentage = (
+                        (index + 1) / total_files_in_cycle) * 100
+                    print(
+                        f"\n[{get_current_time()}] [PROGRESS] Processing file {index + 1} of {total_files_in_cycle} ({progress_percentage:.1f}%)")
+
+                    success = process_single_file(
+                        file, current_dir, fields, prompts)
+
                     if success:
                         processed_files += 1
-                        log_message(f"[{file}] -> Success! Cycle total: {processed_files}")
+                        log_message(
+                            f"[{file}] -> Success! Cycle total: {processed_files}")
                     else:
                         failed_files += 1
-                        log_message(f"[{file}] -> Failed! Cycle total: {failed_files}")
+                        log_message(
+                            f"[{file}] -> Failed! Cycle total: {failed_files}")
                 except Exception as e:
                     log_step_error(f"Processing file {file}", str(e))
                     failed_files += 1
@@ -873,7 +937,8 @@ def main_loop() -> None:
             if processed_files > 0 or failed_files > 0:
                 total_processed_files += processed_files
                 total_failed_files += failed_files
-                print_visual_summary(processed_files, failed_files, total_processed_files, total_failed_files)
+                print_visual_summary(
+                    processed_files, failed_files, total_processed_files, total_failed_files)
 
             time.sleep(2)
 
@@ -891,6 +956,7 @@ def main() -> None:
     except Exception as e:
         log_message(f"Fatal error: {e}")
         input("Press Enter to exit...")
+
 
 if __name__ == "__main__":
     main()

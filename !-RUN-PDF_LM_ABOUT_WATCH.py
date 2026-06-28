@@ -403,14 +403,15 @@ def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str
 
 def mark_file_with_suffix(file: str, current_dir: str, suffix: str) -> None:
     """
-    Renames a file and its sidecars with a specific suffix and moves them to '!- ERRORS' to avoid infinite processing loops.
+    Renames a file and its sidecars with a specific suffix and moves them to '!-ERRORS' to avoid infinite processing loops.
     """
     func_name = "Mark File With Suffix"
-    print_step(func_name, f"Applying suffix '{suffix}' and moving '{file}' to '!- ERRORS'")
+    print_step(
+        func_name, f"Applying suffix '{suffix}' and moving '{file}' to '!-ERRORS'")
     try:
         base_name, ext = os.path.splitext(file)
         error_name = f"{base_name} {suffix}{ext}"
-        errors_dir = os.path.join(current_dir, "!- ERRORS")
+        errors_dir = os.path.join(current_dir, "!-ERRORS")
         os.makedirs(errors_dir, exist_ok=True)
         error_path = os.path.join(errors_dir, error_name)
 
@@ -427,14 +428,16 @@ def mark_file_with_suffix(file: str, current_dir: str, suffix: str) -> None:
             if related_file != error_name and related_file != file and os.path.splitext(related_file)[0] == base_name:
                 rel_ext = os.path.splitext(related_file)[1]
                 try:
-                    rel_error_path = os.path.join(errors_dir, f"{base_name} {suffix}{rel_ext}")
+                    rel_error_path = os.path.join(
+                        errors_dir, f"{base_name} {suffix}{rel_ext}")
                     shutil.move(related_file, rel_error_path)
                     sidecars_renamed += 1
                 except Exception as inner_e:
                     print_error(
                         func_name, f"Could not move sidecar '{related_file}': {inner_e}")
 
-        print_success(func_name, f"Renamed and moved {sidecars_renamed} sidecar files.")
+        print_success(
+            func_name, f"Renamed and moved {sidecars_renamed} sidecar files.")
     except FileNotFoundError as fnfe:
         print_error(func_name, str(fnfe))
     except Exception as e:
@@ -456,7 +459,8 @@ def rename_pdf_and_sidecars(current_dir: str, original_file: str, new_path: str)
         target_dir = os.path.dirname(new_path)
 
         shutil.move(os.path.join(current_dir, original_file), new_path)
-        print_success(func_name, f"Main PDF renamed and moved to: {new_file_name}")
+        print_success(
+            func_name, f"Main PDF renamed and moved to: {new_file_name}")
 
         print_step(func_name, "Renaming and moving associated sidecar files...")
         sidecars_renamed = 0
@@ -468,7 +472,8 @@ def rename_pdf_and_sidecars(current_dir: str, original_file: str, new_path: str)
                 related_target = os.path.join(
                     target_dir, f"{final_new_base_name}{rel_ext}")
                 try:
-                    shutil.move(os.path.join(current_dir, related_file), related_target)
+                    shutil.move(os.path.join(
+                        current_dir, related_file), related_target)
                     sidecars_renamed += 1
                 except Exception as e:
                     print_error(
