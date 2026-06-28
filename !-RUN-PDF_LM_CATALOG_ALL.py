@@ -712,6 +712,10 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             extracted_data[field] = cleaned_result
             print(f"  - {field}: {cleaned_result}")
 
+        if extracted_data.get("Author", "EMPTY") == "EMPTY" and extracted_data.get("Series", "EMPTY") == "EMPTY" and extracted_data.get("Title", "EMPTY") == "EMPTY":
+            log_message(f"[{file}] -> Skipped: No Author, Series, or Title found.")
+            return False
+
         fmt_author = format_author(extracted_data["Author"], current_nlp)
         fmt_series = format_title_case_nlp(extracted_data["Series"], current_nlp)
         fmt_volume = format_title_case_nlp(extracted_data["Volume"], current_nlp)

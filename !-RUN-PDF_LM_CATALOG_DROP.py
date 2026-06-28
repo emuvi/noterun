@@ -845,6 +845,13 @@ class DropZone(QLabel):
                     extracted_data[field] = cleaned_result
                     print_step(f"Extracted {field}: {cleaned_result}")
 
+                if extracted_data.get("Author", "EMPTY") == "EMPTY" and extracted_data.get("Series", "EMPTY") == "EMPTY" and extracted_data.get("Title", "EMPTY") == "EMPTY":
+                    print_error("No Author, Series, or Title found. Skipping file.")
+                    fail_count += 1
+                    print_progress(1, total, prefix='Dropped File Progress', suffix='Complete', length=30)
+                    print_summary_box("Dropped File Processing Cycle", total, success_count, fail_count)
+                    return
+
                 fmt_author = format_author(extracted_data["Author"], current_nlp)
                 fmt_series = format_title_case_nlp(extracted_data["Series"], current_nlp)
                 fmt_volume = format_title_case_nlp(extracted_data["Volume"], current_nlp)
