@@ -461,6 +461,8 @@ def main() -> None:
                             rename_file_on_error(
                                 file, "(UNREADABLE)", current_dir)
                             cycle_fails += 1
+                            print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                             continue
 
                         # 2. LLM Classification
@@ -475,6 +477,8 @@ def main() -> None:
                             rename_file_on_error(
                                 file, "(UNCLASSIFIED)", current_dir)
                             cycle_fails += 1
+                            print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                             time.sleep(2)
                             continue
 
@@ -489,16 +493,22 @@ def main() -> None:
                                 cycle_success += 1
                             else:
                                 cycle_fails += 1
+                                print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                                print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                                 time.sleep(2)
                         else:
                             rename_file_on_error(
                                 file, "(UNCLASSIFIED)", current_dir)
                             cycle_fails += 1
+                            print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
 
                     except ConnectionError as ce:
                         print_error(
                             "Cycle Loop", f"API Error: {ce}. Skipping to next file.")
                         cycle_fails += 1
+                        print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                         time.sleep(2)
                     except Exception as e:
                         print_error(
@@ -506,6 +516,8 @@ def main() -> None:
                         traceback.print_exc()
                         rename_file_on_error(file, "(ERROR)", current_dir)
                         cycle_fails += 1
+                        print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                         time.sleep(2)
 
                 # End of Cycle

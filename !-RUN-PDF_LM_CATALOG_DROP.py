@@ -768,6 +768,8 @@ class DropZone(QLabel):
             if not text:
                 print_error("Failed to extract text or PDF is empty. Processing aborted.")
                 fail_count += 1
+                print_summary_box("Cycle Summary", total, success_count, fail_count)
+                print_summary_box("Overall Session Summary", total, success_count, fail_count)
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to generate catalog filename.")
@@ -798,7 +800,8 @@ class DropZone(QLabel):
                     print_error("No Author, Series, or Title found. Skipping file.")
                     fail_count += 1
                     print_progress(1, total, prefix='Dropped File Progress', suffix='Complete', length=30)
-                    print_summary_box("Dropped File Processing Cycle", total, success_count, fail_count)
+                    print_summary_box("Cycle Summary", total, success_count, fail_count)
+                    print_summary_box("Overall Session Summary", total, success_count, fail_count)
                     return
 
                 fmt_author = format_author(extracted_data["Author"], current_nlp)
@@ -819,6 +822,8 @@ class DropZone(QLabel):
                 if not new_base_name:
                     print_error("Sanitized summary is empty. Cannot use as a filename.")
                     fail_count += 1
+                    print_summary_box("Cycle Summary", total, success_count, fail_count)
+                    print_summary_box("Overall Session Summary", total, success_count, fail_count)
                 else:
                     current_dir = os.path.dirname(file_path)
                     new_path = get_unique_new_path(current_dir, new_base_name, file_path)
@@ -826,6 +831,8 @@ class DropZone(QLabel):
                     if not new_path:
                         print_error("Failed to determine a unique new path. Aborting rename process.")
                         fail_count += 1
+                        print_summary_box("Cycle Summary", total, success_count, fail_count)
+                        print_summary_box("Overall Session Summary", total, success_count, fail_count)
                     else:
                         old_base_name = os.path.splitext(os.path.basename(file_path))[0]
                         new_file_name = os.path.basename(new_path)
@@ -841,6 +848,8 @@ class DropZone(QLabel):
                         else:
                             fail_count += 1
                             print_error("Primary PDF renaming failed. Associated files will not be renamed.")
+                            print_summary_box("Cycle Summary", total, success_count, fail_count)
+                            print_summary_box("Overall Session Summary", total, success_count, fail_count)
 
             print_progress(1, total, prefix='Dropped File Progress', suffix='Complete', length=30)
             print_success("Batch processing cycle complete.")

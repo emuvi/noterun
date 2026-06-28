@@ -687,6 +687,8 @@ class DropZone(QLabel):
                 print_error(
                     "Failed to extract text or PDF is empty. Processing aborted.")
                 fail_count += 1
+                print_summary_box("Cycle Summary", total, success_count, fail_count)
+                print_summary_box("Overall Session Summary", total, success_count, fail_count)
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to rename the PDF based on summary.")
@@ -699,6 +701,8 @@ class DropZone(QLabel):
                 else:
                     fail_count += 1
                     print_error(f"Failed to rename dropped file: {file_path}")
+                    print_summary_box("Cycle Summary", total, success_count, fail_count)
+                    print_summary_box("Overall Session Summary", total, success_count, fail_count)
 
             print_progress(1, total, prefix='Dropped File Progress',
                            suffix='Complete', length=30)

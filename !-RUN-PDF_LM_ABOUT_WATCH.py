@@ -634,6 +634,8 @@ def main() -> None:
                         else:
                             cycle_fails += 1
                             total_session_fails += 1
+                            print_summary_box("Cycle Summary", cycle_total, cycle_success, cycle_fails)
+                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails, total_session_success, total_session_fails)
 
                     except Exception as e:
                         print_error(
@@ -642,6 +644,8 @@ def main() -> None:
                         mark_file_with_suffix(file, current_dir, "(ERROR)")
                         cycle_fails += 1
                         total_session_fails += 1
+                        print_summary_box("Cycle Summary", cycle_total, cycle_success, cycle_fails)
+                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails, total_session_success, total_session_fails)
 
                 # End of file loop - 100% progress
                 print(

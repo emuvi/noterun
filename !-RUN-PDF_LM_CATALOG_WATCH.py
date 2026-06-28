@@ -872,9 +872,13 @@ def main_loop() -> None:
                         failed_files += 1
                         log_message(
                             f"[{file}] -> Failed! Cycle total: {failed_files}")
+                        print_summary_box("Cycle Summary", total_files_in_cycle, processed_files, failed_files)
+                        print_summary_box("Overall Session Summary", total_processed_files + total_failed_files + processed_files + failed_files, total_processed_files + processed_files, total_failed_files + failed_files)
                 except Exception as e:
                     log_step_error(f"Processing file {file}", str(e))
                     failed_files += 1
+                    print_summary_box("Cycle Summary", total_files_in_cycle, processed_files, failed_files)
+                    print_summary_box("Overall Session Summary", total_processed_files + total_failed_files + processed_files + failed_files, total_processed_files + processed_files, total_failed_files + failed_files)
 
             if processed_files > 0 or failed_files > 0:
                 total_processed_files += processed_files

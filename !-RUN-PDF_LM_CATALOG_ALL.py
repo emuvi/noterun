@@ -766,9 +766,13 @@ def process_all_pdfs() -> None:
                 else:
                     failed_files += 1
                     log_message(f"[{file}] -> Failed! Cycle total: {failed_files}")
+                    print_summary_box("Cycle Summary", total_files_in_cycle, processed_files, failed_files)
+                    print_summary_box("Overall Session Summary", total_files_in_cycle, processed_files, failed_files)
             except Exception as e:
                 log_step_error(f"Processing file {file}", str(e))
                 failed_files += 1
+                print_summary_box("Cycle Summary", total_files_in_cycle, processed_files, failed_files)
+                print_summary_box("Overall Session Summary", total_files_in_cycle, processed_files, failed_files)
 
         print_summary_box("Cycle Summary", total_files_in_cycle, processed_files, failed_files)
         print_summary_box("Overall Session Summary", total_files_in_cycle, processed_files, failed_files)

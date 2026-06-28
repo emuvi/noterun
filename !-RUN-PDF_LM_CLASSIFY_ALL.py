@@ -411,6 +411,8 @@ def process_all_pdfs() -> None:
                 if not text:
                     rename_file_on_error(file, "(UNREADABLE)", current_dir)
                     fail_count += 1
+                    print_summary_box("Cycle Summary", total, success_count, fail_count)
+                    print_summary_box("Overall Session Summary", total, success_count, fail_count)
                 else:
                     # 2. LLM Classification
                     start_time = time.time()
@@ -421,6 +423,8 @@ def process_all_pdfs() -> None:
                     if not llm_response:
                         rename_file_on_error(file, "(UNCLASSIFIED)", current_dir)
                         fail_count += 1
+                        print_summary_box("Cycle Summary", total, success_count, fail_count)
+                        print_summary_box("Overall Session Summary", total, success_count, fail_count)
                     else:
                         # 3. Directory Matching
                         target_dir = find_target_directory(parent_dir, current_dir, llm_response)
@@ -433,18 +437,26 @@ def process_all_pdfs() -> None:
                             else:
                                 fail_count += 1
                                 print_error(f"Failed to fully process {file}")
+                                print_summary_box("Cycle Summary", total, success_count, fail_count)
+                                print_summary_box("Overall Session Summary", total, success_count, fail_count)
                         else:
                             rename_file_on_error(file, "(UNCLASSIFIED)", current_dir)
                             fail_count += 1
+                            print_summary_box("Cycle Summary", total, success_count, fail_count)
+                            print_summary_box("Overall Session Summary", total, success_count, fail_count)
 
             except ConnectionError as ce:
                 print_error(f"API Error: {ce}. Skipping to next file.")
                 fail_count += 1
+                print_summary_box("Cycle Summary", total, success_count, fail_count)
+                print_summary_box("Overall Session Summary", total, success_count, fail_count)
             except Exception as e:
                 print_error(f"Unexpected error processing '{file}': {e}")
                 traceback.print_exc()
                 rename_file_on_error(file, "(ERROR)", current_dir)
                 fail_count += 1
+                print_summary_box("Cycle Summary", total, success_count, fail_count)
+                print_summary_box("Overall Session Summary", total, success_count, fail_count)
 
             print_progress(idx + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
 
