@@ -366,6 +366,71 @@ def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) 
     return None
 
 
+def move_associated_files(current_dir: str, target_dir: str, orig_base_name: str, final_base_name: str, orig_pdf_name: str) -> None:
+    """
+    Searches for and moves other files in the directory that share the same old base name.
+    Includes a progress cycle.
+    """
+    print_step(
+        f"Searching for associated files with base name '{orig_base_name}' in '{current_dir}'.")
+    success_count = 0
+    fail_count = 0
+    total = 0
+
+    try:
+        files_in_dir = os.listdir(current_dir)
+        total = len(files_in_dir)
+        print_success(
+            f"Found {total} files in directory. Filtering associated files.")
+
+        for idx, f in enumerate(files_in_dir):
+            print_step(f"Checking file for association: {f}")
+            f_path = os.path.join(current_dir, f)
+            try:
+                if not os.path.isfile(f_path):
+                    continue
+
+                f_base_name, f_ext = os.path.splitext(f)
+
+                # Check if this file is an associated file
+                if f_base_name == orig_base_name and f != orig_pdf_name:
+                    print_step(f"Found associated file: '{f}'")
+                    new_f_name = f"{final_base_name}{f_ext}"
+                    new_f_path = os.path.join(target_dir, new_f_name)
+
+                    print_step(
+                        f"Checking if target path '{new_f_path}' exists.")
+                    if os.path.exists(new_f_path):
+                        print_error(
+                            f"Cannot move '{f}' to '{new_f_name}' because target already exists.")
+                        fail_count += 1
+                        continue
+
+                    print_step(
+                        f"Attempting to move associated file '{f}' to '{new_f_name}'.")
+                    try:
+                        shutil.move(f_path, new_f_path)
+                        print_success(
+                            f"Moved associated file '{f}' to '{new_f_name}'")
+                        success_count += 1
+                    except Exception as move_err:
+                        print_error(f"Failed to move associated file '{f}': {move_err}")
+                        fail_count += 1
+
+            except Exception as file_err:
+                print_error(
+                    f"Error processing potential associated file '{f}': {file_err}")
+                fail_count += 1
+
+        print_success("Completed scanning and moving associated files.")
+        if success_count > 0 or fail_count > 0:
+            print_summary_box("Associated Files Moving",
+                              success_count + fail_count, success_count, fail_count)
+
+    except Exception as e:
+        print_error(f"Error during associated files moving process: {e}")
+
+
 def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> bool:
     """Moves the PDF file and any related files sharing the exact same base name."""
     print_step(f"Preparing to move files to: {target_dir}")
@@ -393,37 +458,7 @@ def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> 
         final_base_name = os.path.splitext(os.path.basename(target_path))[0]
 
         # Move related files
-        files_in_dir = os.listdir(current_dir)
-        total = len(files_in_dir)
-        success_count = 0
-        fail_count = 0
-
-        for idx, related_file in enumerate(files_in_dir):
-            if related_file == file_name:
-                continue
-
-            rel_path = os.path.join(current_dir, related_file)
-            if not os.path.isfile(rel_path):
-                continue
-
-            rel_base, rel_ext = os.path.splitext(related_file)
-            if rel_base == orig_base_name:
-                print_step(f"Found associated file: '{related_file}'")
-                related_target = os.path.join(
-                    target_dir, f"{final_base_name}{rel_ext}")
-                try:
-                    shutil.move(rel_path, related_target)
-                    print_success(f"Moved related file to: {related_target}")
-                    success_count += 1
-                except Exception as e:
-                    print_error(
-                        f"Error moving related file {related_file}: {e}")
-                    fail_count += 1
-
-
-        if success_count > 0 or fail_count > 0:
-            print_summary_box("Associated Files Moving",
-                              success_count + fail_count, success_count, fail_count)
+        move_associated_files(current_dir, target_dir, orig_base_name, final_base_name, file_name)
 
         return True
     except Exception as e:

@@ -364,7 +364,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
 
 def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> bool:
     """Moves the PDF file and any related files sharing the exact same base name."""
-    func_name = "Move Files"
+    func_name = "Move Files and Sidecars"
     print_step(func_name, f"Preparing to move files to: {target_dir}")
 
     target_path = os.path.join(target_dir, file_path)
@@ -389,6 +389,8 @@ def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> 
         final_base_name = os.path.splitext(os.path.basename(target_path))[0]
 
         # Move related files
+        print_step(func_name, "Moving associated sidecar files...")
+        sidecars_moved = 0
         for related_file in os.listdir(current_dir):
             if related_file == file_path:
                 continue
@@ -399,15 +401,19 @@ def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> 
                 try:
                     shutil.move(os.path.join(
                         current_dir, related_file), related_target)
-                    print_success(
-                        func_name, f"Moved related file to: {related_target}")
+                    sidecars_moved += 1
                 except Exception as e:
                     print_error(
-                        func_name, f"Error moving related file {related_file}: {e}")
+                        func_name, f"Error moving sidecar '{related_file}': {e}")
 
+        print_success(
+            func_name, f"Successfully moved {sidecars_moved} sidecar files.")
         return True
+    except OSError as os_error:
+        print_error(func_name, f"OS Error during move: {os_error}")
+        return False
     except Exception as e:
-        print_error(func_name, f"Error moving main file {file_path}: {e}")
+        print_error(func_name, f"Unexpected error moving files: {e}")
         return False
 
 

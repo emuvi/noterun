@@ -691,6 +691,75 @@ def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
         _failed_to_move_files.add(file)
 
 
+def rename_file(old_path: str, new_path: str) -> bool:
+    """Renames/Moves a file from old_path to new_path."""
+    log_step(f"Attempting to move/rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
+    try:
+        shutil.move(old_path, new_path)
+        log_step_success("Renaming file", f"Successfully moved/renamed file to '{os.path.basename(new_path)}'")
+        return True
+    except FileNotFoundError:
+        log_step_error("Renaming file", f"Original file '{old_path}' not found for renaming.")
+        return False
+    except PermissionError:
+        log_step_error("Renaming file", f"Permission denied when renaming '{old_path}'.")
+        return False
+    except Exception as e:
+        log_step_error("Renaming file", f"Error renaming file '{old_path}' to '{new_path}': {e}")
+        return False
+
+
+def rename_associated_files(current_dir: str, target_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
+    """Searches for and renames/moves other files in the directory that share the same old base name."""
+    log_step(f"Searching for associated files with base name '{old_base_name}' in '{current_dir}'")
+    success_count = 0
+    fail_count = 0
+    total = 0
+
+    try:
+        files_in_dir = os.listdir(current_dir)
+        total = len(files_in_dir)
+        log_step_success("Searching for associated files", f"Found {total} files in directory. Filtering associated files.")
+
+        for idx, f in enumerate(files_in_dir):
+            log_step(f"Checking file for association: {f}")
+            f_path = os.path.join(current_dir, f)
+            try:
+                if not os.path.isfile(f_path):
+                    continue
+
+                f_base_name, f_ext = os.path.splitext(f)
+
+                if f_base_name == old_base_name and f != new_pdf_name:
+                    log_step(f"Found associated file: '{f}'")
+                    new_f_name = f"{final_new_base_name}{f_ext}"
+                    new_f_path = os.path.join(target_dir, new_f_name)
+
+                    log_step(f"Checking if target path '{new_f_path}' exists")
+                    if os.path.exists(new_f_path):
+                        log_step_error("Renaming associated file", f"Cannot rename '{f}' to '{new_f_name}' because target already exists.")
+                        fail_count += 1
+                        continue
+
+                    log_step(f"Attempting to rename associated file '{f}' to '{new_f_name}'")
+                    if rename_file(f_path, new_f_path):
+                        log_step_success("Renaming associated file", f"Renamed associated file '{f}' to '{new_f_name}'")
+                        success_count += 1
+                    else:
+                        log_step_error("Renaming associated file", f"Failed to rename associated file '{f}'.")
+                        fail_count += 1
+            except Exception as file_err:
+                log_step_error("Processing associated file", f"Error processing potential associated file '{f}': {file_err}")
+                fail_count += 1
+
+        log_step_success("Scanning associated files", "Completed scanning and renaming associated files.")
+        if success_count > 0 or fail_count > 0:
+            print_summary_box("Associated Files Renaming", success_count + fail_count, success_count, fail_count)
+
+    except Exception as e:
+        log_step_error("Associated files renaming process", f"Error during associated files renaming process: {e}")
+
+
 def process_single_file(file: str, current_dir: str, fields: List[str], prompts: Dict[str, str]) -> bool:
     """Processes a single PDF file, extracting text, querying model, formatting fields and renaming. Returns True if successful."""
     event_chain.clear()
@@ -778,30 +847,19 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
 
         try:
             log_step("Renaming file")
-            shutil.move(old_path, new_path)
-            log_step_success("Renaming file", f"Renamed to: '{new_file_name}'")
+            success = rename_file(old_path, new_path)
 
-            orig_base_name = os.path.splitext(file)[0]
-            final_base_name = os.path.splitext(new_file_name)[0]
+            if success:
+                orig_base_name = os.path.splitext(file)[0]
+                final_base_name = os.path.splitext(new_file_name)[0]
 
-            for related_file in os.listdir(current_dir):
-                if related_file == file:
-                    continue
-                rel_base, rel_ext = os.path.splitext(related_file)
-                if rel_base == orig_base_name:
-                    related_target = os.path.join(
-                        target_dir, f"{final_base_name}{rel_ext}")
-                    try:
-                        log_step(f"Renaming related file: {related_file}")
-                        shutil.move(os.path.join(
-                            current_dir, related_file), related_target)
-                        log_step_success(
-                            f"Renaming related file: {related_file}", f"Renamed to {os.path.basename(related_target)}")
-                    except Exception as e:
-                        log_step_error(
-                            f"Renaming related file: {related_file}", str(e))
-
-            return True
+                log_step_success("Renaming file", "Primary PDF renamed successfully. Proceeding to rename associated files.")
+                rename_associated_files(current_dir, target_dir, orig_base_name, final_base_name, new_file_name)
+                return True
+            else:
+                log_step_error("Renaming file", "Primary PDF renaming failed. Associated files will not be renamed.")
+                time.sleep(2)
+                return False
         except Exception as e:
             log_step_error("Renaming file", str(e))
             error_msg = f"Failed to rename or move file '{file}' to '{new_path}': {e}"

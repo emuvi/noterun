@@ -107,8 +107,6 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         print_error(f"Failed to print summary box: {e}")
 
 
-
-
 FIELD_PROMPTS: Dict[str, str] = {
     "Author": """Extract the primary author (person or institution). 
 Rules: Return only the first/main author. Omit titles (Dr., Prof.). Use well-known acronyms for institutions (e.g., WHO). Return EMPTY if none.""",
@@ -692,7 +690,8 @@ def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str
 
 def rename_file(old_path: str, new_path: str) -> bool:
     """Renames a file from old_path to new_path."""
-    print_step(f"Attempting to rename '{old_path}' to '{new_path}'.")
+    print_step(
+        f"Attempting to rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'.")
     try:
         os.rename(old_path, new_path)
         print_success(
@@ -710,7 +709,10 @@ def rename_file(old_path: str, new_path: str) -> bool:
 
 
 def rename_associated_files(current_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
-    """Searches for and renames other files in the directory that share the same old base name."""
+    """
+    Searches for and renames other files in the directory that share the same old base name.
+    Includes a progress cycle.
+    """
     print_step(
         f"Searching for associated files with base name '{old_base_name}' in '{current_dir}'.")
     success_count = 0
@@ -729,7 +731,10 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
             try:
                 if not os.path.isfile(f_path):
                     continue
+
                 f_base_name, f_ext = os.path.splitext(f)
+
+                # Check if this file is an associated file
                 if f_base_name == old_base_name and f != new_pdf_name:
                     print_step(f"Found associated file: '{f}'")
                     new_f_name = f"{final_new_base_name}{f_ext}"
@@ -766,6 +771,7 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
     except Exception as e:
         print_error(f"Error during associated files renaming process: {e}")
 
+
 def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     """
     Moves the file to '!-ERRORS' to prevent it from being endlessly processed.
@@ -781,7 +787,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     try:
         shutil.move(os.path.join(current_dir, file_path), error_path)
         print_success(f"Moved main file to '!-ERRORS'")
-        
+
         # Save the error log
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
@@ -794,9 +800,11 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
                 try:
                     shutil.move(os.path.join(current_dir, related_file),
                                 os.path.join(errors_dir, related_file))
-                    print_success(f"Moved related file '{related_file}' to '!-ERRORS'")
+                    print_success(
+                        f"Moved related file '{related_file}' to '!-ERRORS'")
                 except Exception as e:
-                    print_error(f"Failed to move related file {related_file}: {e}")
+                    print_error(
+                        f"Failed to move related file {related_file}: {e}")
     except Exception as e:
         print_error(f"Failed to move main file {file_path}: {e}")
 
@@ -878,7 +886,8 @@ class DropZone(QLabel):
             if not text:
                 error_msg = "Failed to extract text or PDF is empty. Processing aborted."
                 print_error(error_msg)
-                handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+                handle_file_error(os.path.basename(file_path),
+                                  os.path.dirname(file_path), error_msg)
                 fail_count += 1
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
@@ -913,7 +922,8 @@ class DropZone(QLabel):
                 if extracted_data.get("Author", "EMPTY") == "EMPTY" and extracted_data.get("Series", "EMPTY") == "EMPTY" and extracted_data.get("Title", "EMPTY") == "EMPTY":
                     error_msg = "No Author, Series, or Title found. Skipping file."
                     print_error(error_msg)
-                    handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+                    handle_file_error(os.path.basename(
+                        file_path), os.path.dirname(file_path), error_msg)
                     fail_count += 1
                     print_progress(
                         1, total, prefix='Dropped File Progress', suffix='Complete', length=30)
@@ -950,7 +960,8 @@ class DropZone(QLabel):
                 if not new_base_name:
                     error_msg = "Sanitized summary is empty. Cannot use as a filename."
                     print_error(error_msg)
-                    handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+                    handle_file_error(os.path.basename(
+                        file_path), os.path.dirname(file_path), error_msg)
                     fail_count += 1
                 else:
                     current_dir = os.path.dirname(file_path)
@@ -960,7 +971,8 @@ class DropZone(QLabel):
                     if not new_path:
                         error_msg = "Failed to determine a unique new path. Aborting rename process."
                         print_error(error_msg)
-                        handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+                        handle_file_error(os.path.basename(
+                            file_path), os.path.dirname(file_path), error_msg)
                         fail_count += 1
                     else:
                         old_base_name = os.path.splitext(
@@ -999,7 +1011,8 @@ class DropZone(QLabel):
         except Exception as e:
             error_msg = f"Critical error processing dropped file: {e}\n{traceback.format_exc()}"
             print_error(error_msg)
-            handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+            handle_file_error(os.path.basename(file_path),
+                              os.path.dirname(file_path), error_msg)
             print_summary_box("Cycle Summary (Interrupted)",
                               total, success_count, fail_count)
             print_summary_box(
