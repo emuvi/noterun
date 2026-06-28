@@ -1,19 +1,19 @@
+import difflib
+import glob
+import importlib
+import json
 import os
 import re
-import glob
-import time
-import sys
 import shutil
-import difflib
-import PyPDF2
-import json
-from typing import Optional, Dict, Any, List, Tuple
-from datetime import datetime
-from lmstd import LMStd, ChatResponse, ListModelsResponse
-from langdetect import detect
-import spacy
-import importlib
+import time
 import traceback
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import PyPDF2
+import spacy
+from langdetect import detect
+from lmstd import ChatResponse, ListModelsResponse, LMStd
 
 # Global cache for loaded Spacy models
 nlp_models_cache: Dict[str, Any] = {}
@@ -871,13 +871,17 @@ def main_loop() -> None:
                         failed_files += 1
                         log_message(
                             f"[{file}] -> Failed! Cycle total: {failed_files}")
-                        print_summary_box("Cycle Summary", total_files_in_cycle, processed_files, failed_files)
-                        print_summary_box("Overall Session Summary", total_processed_files + total_failed_files + processed_files + failed_files, total_processed_files + processed_files, total_failed_files + failed_files)
+                        print_summary_box(
+                            "Cycle Summary", total_files_in_cycle, processed_files, failed_files)
+                        print_summary_box("Overall Session Summary", total_processed_files + total_failed_files + processed_files +
+                                          failed_files, total_processed_files + processed_files, total_failed_files + failed_files)
                 except Exception as e:
                     log_step_error(f"Processing file {file}", str(e))
                     failed_files += 1
-                    print_summary_box("Cycle Summary", total_files_in_cycle, processed_files, failed_files)
-                    print_summary_box("Overall Session Summary", total_processed_files + total_failed_files + processed_files + failed_files, total_processed_files + processed_files, total_failed_files + failed_files)
+                    print_summary_box(
+                        "Cycle Summary", total_files_in_cycle, processed_files, failed_files)
+                    print_summary_box("Overall Session Summary", total_processed_files + total_failed_files + processed_files +
+                                      failed_files, total_processed_files + processed_files, total_failed_files + failed_files)
 
             if processed_files > 0 or failed_files > 0:
                 total_processed_files += processed_files

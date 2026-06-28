@@ -1,19 +1,19 @@
-import os
-import sys
-import re
 import glob
-import time
+import importlib
+import os
+import re
 import shutil
+import sys
+import time
 import traceback
-import PyPDF2
-from PyPDF2.errors import PdfReadError
 from datetime import datetime
-from typing import Optional, List, Any, Dict
+from typing import Any, Dict, List, Optional
+
+import PyPDF2
 import spacy
 from langdetect import detect
-import importlib
-
-from lmstd import LMStd, ChatResponse
+from lmstd import ChatResponse, LMStd
+from PyPDF2.errors import PdfReadError
 
 # --- Visualization and Logging Helpers ---
 
@@ -635,8 +635,10 @@ def main() -> None:
                         else:
                             cycle_fails += 1
                             total_session_fails += 1
-                            print_summary_box("Cycle Summary", cycle_total, cycle_success, cycle_fails)
-                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails, total_session_success, total_session_fails)
+                            print_summary_box(
+                                "Cycle Summary", cycle_total, cycle_success, cycle_fails)
+                            print_summary_box("Overall Session Summary", total_session_success +
+                                              total_session_fails, total_session_success, total_session_fails)
 
                     except Exception as e:
                         print_error(
@@ -645,8 +647,10 @@ def main() -> None:
                         handle_file_error(file, current_dir)
                         cycle_fails += 1
                         total_session_fails += 1
-                        print_summary_box("Cycle Summary", cycle_total, cycle_success, cycle_fails)
-                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails, total_session_success, total_session_fails)
+                        print_summary_box(
+                            "Cycle Summary", cycle_total, cycle_success, cycle_fails)
+                        print_summary_box("Overall Session Summary", total_session_success +
+                                          total_session_fails, total_session_success, total_session_fails)
 
                 # End of file loop - 100% progress
                 print(

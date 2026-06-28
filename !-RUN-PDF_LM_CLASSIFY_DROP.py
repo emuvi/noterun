@@ -1,18 +1,17 @@
 import os
-import sys
 import re
 import shutil
+import sys
 import unicodedata
-import traceback
-import PyPDF2
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget
+import PyPDF2
+from lmstd import ChatResponse, LMStd
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
-
-from lmstd import LMStd, ChatResponse
+from PyQt5.QtWidgets import (QApplication, QLabel, QMainWindow, QVBoxLayout,
+                             QWidget)
 
 # Initialize the LM Studio client pointing to the local LM Studio server.
 try:
@@ -65,10 +64,12 @@ def print_progress(current: int, total: int, prefix: str = '', suffix: str = '',
     try:
         if total == 0:
             return
-        percent = ("{0:." + str(decimals) + "f}").format(100 * (current / float(total)))
+        percent = ("{0:." + str(decimals) + "f}").format(100 *
+                                                         (current / float(total)))
         filledLength = int(length * current // total)
         bar = fill * filledLength + '-' * (length - filledLength)
-        print(f'[{get_current_time()}] 🔄 {prefix} |{bar}| {percent}% {suffix}', end=printEnd)
+        print(
+            f'[{get_current_time()}] 🔄 {prefix} |{bar}| {percent}% {suffix}', end=printEnd)
     except Exception as e:
         print_error(f"Failed to print progress: {e}")
 
@@ -83,9 +84,12 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         title_str = f" 📊 SUMMARY: {title} "
         print("║" + title_str.center(box_width - 2) + "║")
         print("╠" + "═" * (box_width - 2) + "╣")
-        print("║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║")
-        print("║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║")
-        print("║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║")
+        print(
+            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║")
+        print(
+            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║")
+        print(
+            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║")
         print("╚" + "═" * (box_width - 2) + "╝\n")
     except Exception as e:
         print_error(f"Failed to print summary box: {e}")
@@ -93,6 +97,7 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
 
 _cached_prompt = None
 _cached_parent_mtime = 0
+
 
 def get_classify_prompt(parent_dir: str, current_dir: str) -> str:
     """Generates the prompt instruction dynamically based on parent directory folders."""
@@ -149,11 +154,13 @@ def get_classify_prompt(parent_dir: str, current_dir: str) -> str:
 
 def get_pages_to_extract(total_pages: int) -> List[int]:
     """Determines which pages to extract from a PDF based on total pages."""
-    print_step(f"Determining pages to extract for a PDF with {total_pages} total pages.")
+    print_step(
+        f"Determining pages to extract for a PDF with {total_pages} total pages.")
     pages_to_extract: List[int] = []
     try:
         if total_pages > 33:
-            print_step("PDF has > 33 pages. Selecting first 11, middle 11, and last 11.")
+            print_step(
+                "PDF has > 33 pages. Selecting first 11, middle 11, and last 11.")
             mid_start = (total_pages // 2) - 5
             pages_to_extract = sorted(set(
                 list(range(11)) +
@@ -164,7 +171,8 @@ def get_pages_to_extract(total_pages: int) -> List[int]:
             print_step("PDF has <= 33 pages. Selecting all pages.")
             pages_to_extract = list(range(total_pages))
 
-        print_success(f"Successfully determined {len(pages_to_extract)} pages to extract.")
+        print_success(
+            f"Successfully determined {len(pages_to_extract)} pages to extract.")
         return pages_to_extract
     except Exception as e:
         print_error(f"Error determining pages to extract: {e}")
@@ -181,7 +189,8 @@ def extract_text_from_pages(reader: PyPDF2.PdfReader, pages_to_extract: List[int
 
     try:
         for idx, page_num in enumerate(pages_to_extract):
-            print_step(f"Extracting text from page {page_num + 1} (Index: {idx+1}/{total})")
+            print_step(
+                f"Extracting text from page {page_num + 1} (Index: {idx+1}/{total})")
             try:
                 page = reader.pages[page_num]
                 extracted = page.extract_text()
@@ -190,17 +199,22 @@ def extract_text_from_pages(reader: PyPDF2.PdfReader, pages_to_extract: List[int
                 success_count += 1
                 print_success(f"Extracted page {page_num + 1}")
             except Exception as page_err:
-                print_error(f"Error extracting text from page {page_num + 1}: {page_err}")
+                print_error(
+                    f"Error extracting text from page {page_num + 1}: {page_err}")
                 fail_count += 1
 
-            print_progress(idx + 1, total, prefix='Page Extraction Progress', suffix='Complete', length=30)
+            print_progress(
+                idx + 1, total, prefix='Page Extraction Progress', suffix='Complete', length=30)
 
-        print_success(f"Successfully finished text extraction loop. Total characters: {len(text)}")
-        print_summary_box("Page Extraction Cycle", total, success_count, fail_count)
+        print_success(
+            f"Successfully finished text extraction loop. Total characters: {len(text)}")
+        print_summary_box("Page Extraction Cycle", total,
+                          success_count, fail_count)
         return text.strip()
     except Exception as e:
         print_error(f"Critical error during text extraction loop: {e}")
-        print_summary_box("Page Extraction Cycle (Interrupted)", total, success_count, fail_count)
+        print_summary_box("Page Extraction Cycle (Interrupted)",
+                          total, success_count, fail_count)
         return ""
 
 
@@ -216,7 +230,8 @@ def extract_pdf_text(file_path: str) -> str:
             print_step("Initializing PyPDF2 PdfReader.")
             reader = PyPDF2.PdfReader(pdf_file)
             total_pages = len(reader.pages)
-            print_success(f"PDF reader initialized successfully. Total pages found: {total_pages}.")
+            print_success(
+                f"PDF reader initialized successfully. Total pages found: {total_pages}.")
 
             print_step("Calling get_pages_to_extract.")
             pages_to_extract = get_pages_to_extract(total_pages)
@@ -277,7 +292,8 @@ def query_model_classification(pdf_text: str, prompt: str) -> str:
 def normalize_text(text: str) -> str:
     """Normalize text to lowercase, strip accents, and remove punctuation."""
     normalized = unicodedata.normalize('NFD', text)
-    normalized = ''.join(ch for ch in normalized if unicodedata.category(ch) != 'Mn')
+    normalized = ''.join(
+        ch for ch in normalized if unicodedata.category(ch) != 'Mn')
     normalized = re.sub(r'[^a-z0-9\s]', ' ', normalized.lower())
     normalized = re.sub(r'\s+', ' ', normalized).strip()
     return normalized
@@ -318,7 +334,8 @@ def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) 
             if normalized_response in normalized_entry:
                 score += 80
 
-            common_words = normalized_response_words.intersection(set(normalized_entry.split()))
+            common_words = normalized_response_words.intersection(
+                set(normalized_entry.split()))
             score += len(common_words) * 10
 
             if score > best_score:
@@ -326,14 +343,16 @@ def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) 
                 best_match = full_path
 
             if score >= 200:
-                print_success(f"Exact/High confidence match found: {full_path}")
+                print_success(
+                    f"Exact/High confidence match found: {full_path}")
                 return full_path
 
     except Exception as e:
         print_error(f"Error reading parent directory: {e}")
 
     if best_match and best_score > 0:
-        print_success(f"Best fuzzy match found: {best_match} (Score: {best_score})")
+        print_success(
+            f"Best fuzzy match found: {best_match} (Score: {best_score})")
         return best_match
 
     print_error("No suitable target directory matched.")
@@ -375,27 +394,31 @@ def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> 
         for idx, related_file in enumerate(files_in_dir):
             if related_file == file_name:
                 continue
-            
+
             rel_path = os.path.join(current_dir, related_file)
             if not os.path.isfile(rel_path):
                 continue
-            
+
             rel_base, rel_ext = os.path.splitext(related_file)
             if rel_base == orig_base_name:
                 print_step(f"Found associated file: '{related_file}'")
-                related_target = os.path.join(target_dir, f"{final_base_name}{rel_ext}")
+                related_target = os.path.join(
+                    target_dir, f"{final_base_name}{rel_ext}")
                 try:
                     shutil.move(rel_path, related_target)
                     print_success(f"Moved related file to: {related_target}")
                     success_count += 1
                 except Exception as e:
-                    print_error(f"Error moving related file {related_file}: {e}")
+                    print_error(
+                        f"Error moving related file {related_file}: {e}")
                     fail_count += 1
-            
-            print_progress(idx + 1, total, prefix='Associated Files Progress', suffix='Complete', length=30)
-            
+
+            print_progress(
+                idx + 1, total, prefix='Associated Files Progress', suffix='Complete', length=30)
+
         if success_count > 0 or fail_count > 0:
-            print_summary_box("Associated Files Moving", success_count + fail_count, success_count, fail_count)
+            print_summary_box("Associated Files Moving",
+                              success_count + fail_count, success_count, fail_count)
 
         return True
     except Exception as e:
@@ -407,7 +430,8 @@ def classify_and_move_pdf(file_path: str, pdf_text: str) -> bool:
     """
     Coordinates the process of classifying the PDF and moving it and its associated files.
     """
-    print_step(f"Starting classification process for '{os.path.basename(file_path)}'.")
+    print_step(
+        f"Starting classification process for '{os.path.basename(file_path)}'.")
 
     current_dir = os.path.dirname(file_path)
     parent_dir = os.path.dirname(current_dir)
@@ -421,13 +445,15 @@ def classify_and_move_pdf(file_path: str, pdf_text: str) -> bool:
     print_step("Calling query_model_classification")
     llm_response = query_model_classification(pdf_text, prompt)
     if not llm_response:
-        print_error("Failed to get classification from model. Aborting classify process.")
+        print_error(
+            "Failed to get classification from model. Aborting classify process.")
         return False
 
     print_step("Calling find_target_directory")
     target_dir = find_target_directory(parent_dir, current_dir, llm_response)
     if not target_dir:
-        print_error("Failed to find target directory. Aborting classify process.")
+        print_error(
+            "Failed to find target directory. Aborting classify process.")
         return False
 
     print_step("Calling move_file_and_related")
@@ -450,7 +476,8 @@ class DropZone(QLabel):
             print_step("Initializing DropZone widget.")
             super().__init__()
             self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.setText("Drag and Drop PDF File Here\n\n🔹 Action: Classify & Move\n(Moves to the best matching category folder)")
+            self.setText(
+                "Drag and Drop PDF File Here\n\n🔹 Action: Classify & Move\n(Moves to the best matching category folder)")
             self.setStyleSheet('''
                 QLabel {
                     border: 4px dashed #aaa;
@@ -513,7 +540,8 @@ class DropZone(QLabel):
         """
         Extracts text from the PDF and triggers command execution.
         """
-        print_step(f"=== Beginning processing cycle for dropped file: {file_path} ===")
+        print_step(
+            f"=== Beginning processing cycle for dropped file: {file_path} ===")
         success_count = 0
         fail_count = 0
         total = 1
@@ -523,10 +551,13 @@ class DropZone(QLabel):
             text = extract_pdf_text(file_path)
 
             if not text:
-                print_error("Failed to extract text or PDF is empty. Processing aborted.")
+                print_error(
+                    "Failed to extract text or PDF is empty. Processing aborted.")
                 fail_count += 1
-                print_summary_box("Cycle Summary", total, success_count, fail_count)
-                print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                print_summary_box("Cycle Summary", total,
+                                  success_count, fail_count)
+                print_summary_box("Overall Session Summary",
+                                  total, success_count, fail_count)
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to classify and move the PDF.")
@@ -534,22 +565,31 @@ class DropZone(QLabel):
                 classify_success = classify_and_move_pdf(file_path, text)
                 if classify_success:
                     success_count += 1
-                    print_success(f"Completed processing for dropped file: {file_path}")
+                    print_success(
+                        f"Completed processing for dropped file: {file_path}")
                 else:
                     fail_count += 1
-                    print_error(f"Failed to classify and move dropped file: {file_path}")
-                    print_summary_box("Cycle Summary", total, success_count, fail_count)
-                    print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                    print_error(
+                        f"Failed to classify and move dropped file: {file_path}")
+                    print_summary_box("Cycle Summary", total,
+                                      success_count, fail_count)
+                    print_summary_box("Overall Session Summary",
+                                      total, success_count, fail_count)
 
-            print_progress(1, total, prefix='Dropped File Progress', suffix='Complete', length=30)
+            print_progress(1, total, prefix='Dropped File Progress',
+                           suffix='Complete', length=30)
             print_success("Batch processing cycle complete.")
-            print_summary_box("Cycle Summary", total, success_count, fail_count)
-            print_summary_box("Overall Session Summary", total, success_count, fail_count)
+            print_summary_box("Cycle Summary", total,
+                              success_count, fail_count)
+            print_summary_box("Overall Session Summary",
+                              total, success_count, fail_count)
 
         except Exception as e:
             print_error(f"Critical error during batch processing: {e}")
-            print_summary_box("Cycle Summary (Interrupted)", total, success_count, fail_count)
-            print_summary_box("Overall Session Summary (Interrupted)", total, success_count, fail_count)
+            print_summary_box("Cycle Summary (Interrupted)",
+                              total, success_count, fail_count)
+            print_summary_box(
+                "Overall Session Summary (Interrupted)", total, success_count, fail_count)
 
 
 class MainWindow(QMainWindow):
@@ -589,7 +629,8 @@ def main() -> None:
         window = MainWindow()
         window.show()
 
-        print_success("Application started successfully. Waiting for PDF drops...")
+        print_success(
+            "Application started successfully. Waiting for PDF drops...")
         sys.exit(app.exec_())
     except Exception as e:
         print_error(f"Error in main application loop: {e}")

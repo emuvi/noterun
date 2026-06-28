@@ -1,14 +1,14 @@
+import importlib
 import os
-import sys
 import re
-import PyPDF2
+import sys
 from datetime import datetime
-from typing import Optional, List, Any, Dict
+from typing import Any, Dict, List, Optional
+
+import PyPDF2
 import spacy
 from langdetect import detect
-import importlib
-
-from lmstd import LMStd, ChatResponse
+from lmstd import ChatResponse, LMStd
 
 # Initialize the LM Studio client pointing to the local LM Studio server.
 try:
@@ -641,8 +641,10 @@ def process_all_pdfs() -> None:
                     print_error(
                         f"Failed to extract text or PDF is empty for: {filename}")
                     fail_count += 1
-                    print_summary_box("Cycle Summary", total, success_count, fail_count)
-                    print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                    print_summary_box("Cycle Summary", total,
+                                      success_count, fail_count)
+                    print_summary_box("Overall Session Summary",
+                                      total, success_count, fail_count)
                 else:
                     print_success(
                         f"Extracted {len(text)} characters of text from '{filename}'.")
@@ -654,27 +656,34 @@ def process_all_pdfs() -> None:
                     else:
                         fail_count += 1
                         print_error(f"Failed to fully process {filename}")
-                        print_summary_box("Cycle Summary", total, success_count, fail_count)
-                        print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                        print_summary_box(
+                            "Cycle Summary", total, success_count, fail_count)
+                        print_summary_box(
+                            "Overall Session Summary", total, success_count, fail_count)
 
             except Exception as file_err:
                 print_error(
                     f"Unexpected error processing file '{filename}': {file_err}")
                 fail_count += 1
-                print_summary_box("Cycle Summary", total, success_count, fail_count)
-                print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                print_summary_box("Cycle Summary", total,
+                                  success_count, fail_count)
+                print_summary_box("Overall Session Summary",
+                                  total, success_count, fail_count)
 
             print_progress(
                 idx + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
 
         print_success("Batch processing cycle complete.")
         print_summary_box("Cycle Summary", total, success_count, fail_count)
-        print_summary_box("Overall Session Summary", total, success_count, fail_count)
+        print_summary_box("Overall Session Summary",
+                          total, success_count, fail_count)
 
     except Exception as e:
         print_error(f"Critical error during batch processing: {e}")
-        print_summary_box("Cycle Summary (Interrupted)", total, success_count, fail_count)
-        print_summary_box("Overall Session Summary (Interrupted)", total, success_count, fail_count)
+        print_summary_box("Cycle Summary (Interrupted)",
+                          total, success_count, fail_count)
+        print_summary_box("Overall Session Summary (Interrupted)",
+                          total, success_count, fail_count)
 
 
 def main() -> None:

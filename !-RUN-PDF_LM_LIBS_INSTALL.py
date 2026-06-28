@@ -1,6 +1,5 @@
 import subprocess
 import sys
-import os
 
 
 def install_packages():

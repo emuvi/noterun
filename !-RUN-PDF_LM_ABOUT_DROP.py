@@ -1,18 +1,18 @@
+import importlib
 import os
-import sys
 import re
-import PyPDF2
+import sys
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
+import PyPDF2
 import spacy
 from langdetect import detect
-import importlib
-
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget
+from lmstd import ChatResponse, LMStd
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
-
-from lmstd import LMStd, ChatResponse
+from PyQt5.QtWidgets import (QApplication, QLabel, QMainWindow, QVBoxLayout,
+                             QWidget)
 
 # Initialize the LM Studio client pointing to the local LM Studio server.
 try:
@@ -610,7 +610,8 @@ class DropZone(QLabel):
             print_step("Initializing DropZone widget.")
             super().__init__()
             self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.setText("Drag and Drop PDF File Here\n\n🔹 Action: Summarize File\n(Generates a short summary for the filename)")
+            self.setText(
+                "Drag and Drop PDF File Here\n\n🔹 Action: Summarize File\n(Generates a short summary for the filename)")
             self.setStyleSheet('''
                 QLabel {
                     border: 4px dashed #aaa;
@@ -687,8 +688,10 @@ class DropZone(QLabel):
                 print_error(
                     "Failed to extract text or PDF is empty. Processing aborted.")
                 fail_count += 1
-                print_summary_box("Cycle Summary", total, success_count, fail_count)
-                print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                print_summary_box("Cycle Summary", total,
+                                  success_count, fail_count)
+                print_summary_box("Overall Session Summary",
+                                  total, success_count, fail_count)
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to rename the PDF based on summary.")
@@ -701,19 +704,25 @@ class DropZone(QLabel):
                 else:
                     fail_count += 1
                     print_error(f"Failed to rename dropped file: {file_path}")
-                    print_summary_box("Cycle Summary", total, success_count, fail_count)
-                    print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                    print_summary_box("Cycle Summary", total,
+                                      success_count, fail_count)
+                    print_summary_box("Overall Session Summary",
+                                      total, success_count, fail_count)
 
             print_progress(1, total, prefix='Dropped File Progress',
                            suffix='Complete', length=30)
             print_success("Batch processing cycle complete.")
-            print_summary_box("Cycle Summary", total, success_count, fail_count)
-            print_summary_box("Overall Session Summary", total, success_count, fail_count)
+            print_summary_box("Cycle Summary", total,
+                              success_count, fail_count)
+            print_summary_box("Overall Session Summary",
+                              total, success_count, fail_count)
 
         except Exception as e:
             print_error(f"Critical error processing dropped file: {e}")
-            print_summary_box("Cycle Summary (Interrupted)", total, success_count, fail_count)
-            print_summary_box("Overall Session Summary (Interrupted)", total, success_count, fail_count)
+            print_summary_box("Cycle Summary (Interrupted)",
+                              total, success_count, fail_count)
+            print_summary_box(
+                "Overall Session Summary (Interrupted)", total, success_count, fail_count)
 
 
 class MainWindow(QMainWindow):

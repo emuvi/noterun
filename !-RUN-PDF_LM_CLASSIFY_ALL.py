@@ -1,37 +1,43 @@
+import glob
 import os
 import re
-import glob
-import time
 import shutil
-import unicodedata
+import time
 import traceback
-import PyPDF2
-import sys
-from typing import Optional, List, Tuple
+import unicodedata
 from datetime import datetime
-from lmstd import LMStd, ChatResponse
+from typing import List, Optional, Tuple
+
+import PyPDF2
+from lmstd import ChatResponse, LMStd
 
 # --- Visualization and Logging Helpers ---
+
 
 def get_current_time() -> str:
     """Returns the current time formatted as HH:MM:SS."""
     return datetime.now().strftime('%H:%M:%S')
 
+
 def log_message(message: str) -> None:
     """Logs a general message to the console with a timestamp."""
     print(f"[{get_current_time()}] {message}")
+
 
 def print_step(message: str) -> None:
     """Prints a step being executed with a visual indicator."""
     print(f"[{get_current_time()}] 🔹 [STEP] {message}")
 
+
 def print_success(message: str) -> None:
     """Prints a success message with a visual indicator."""
     print(f"[{get_current_time()}] ✅ [SUCCESS] {message}")
 
+
 def print_error(message: str) -> None:
     """Prints an error message with a visual indicator."""
     print(f"[{get_current_time()}] 🔴 [ERROR] {message}")
+
 
 def print_progress(current: int, total: int, prefix: str = '', suffix: str = '', decimals: int = 1, length: int = 50, fill: str = '█', printEnd: str = "\n") -> None:
     """
@@ -40,12 +46,15 @@ def print_progress(current: int, total: int, prefix: str = '', suffix: str = '',
     try:
         if total == 0:
             return
-        percent = ("{0:." + str(decimals) + "f}").format(100 * (current / float(total)))
+        percent = ("{0:." + str(decimals) + "f}").format(100 *
+                                                         (current / float(total)))
         filledLength = int(length * current // total)
         bar = fill * filledLength + '-' * (length - filledLength)
-        print(f'[{get_current_time()}] 🔄 {prefix} |{bar}| {percent}% {suffix}', end=printEnd)
+        print(
+            f'[{get_current_time()}] 🔄 {prefix} |{bar}| {percent}% {suffix}', end=printEnd)
     except Exception as e:
         print_error(f"Failed to print progress: {e}")
+
 
 def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
     """Prints a visual box containing the summary of a cycle or session."""
@@ -54,12 +63,16 @@ def print_summary_box(title: str, total: int, successes: int, fails: int) -> Non
     title_str = f" 📊 SUMMARY: {title} "
     print("║" + title_str.center(box_width - 2) + "║")
     print("╠" + "═" * (box_width - 2) + "╣")
-    print("║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║")
-    print("║" + f" ✅ Successes          : {successes:<21}".ljust(box_width - 2) + "║")
-    print("║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║")
+    print(
+        "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║")
+    print(
+        "║" + f" ✅ Successes          : {successes:<21}".ljust(box_width - 2) + "║")
+    print(
+        "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║")
     print("╚" + "═" * (box_width - 2) + "╝\n")
 
 # --- Setup & API Functions ---
+
 
 def init_lmstd_client() -> Optional[LMStd]:
     """
@@ -72,15 +85,18 @@ def init_lmstd_client() -> Optional[LMStd]:
             base_url=os.environ.get("LMSTD_HOST", "http://localhost:1234"),
             api_token=os.environ.get("LMSTD_APIKEY")
         )
-        print_success("Init LMStd Client: LMStd client initialized successfully.")
+        print_success(
+            "Init LMStd Client: LMStd client initialized successfully.")
         return client
     except Exception as e:
-        print_error(f"Init LMStd Client: Failed to initialize LMStd client: {e}")
+        print_error(
+            f"Init LMStd Client: Failed to initialize LMStd client: {e}")
         return None
 
 
 _cached_prompt = None
 _cached_parent_mtime = 0
+
 
 def get_classify_prompt(parent_dir: str, current_dir: str) -> str:
     """Generates the prompt instruction dynamically based on parent directory folders."""
@@ -93,7 +109,8 @@ def get_classify_prompt(parent_dir: str, current_dir: str) -> str:
     if _cached_prompt is not None and current_mtime == _cached_parent_mtime:
         return _cached_prompt
 
-    print_step("Generate Prompt: Scanning target categories in parent directory...")
+    print_step(
+        "Generate Prompt: Scanning target categories in parent directory...")
 
     prompt = (
         "Você é um especialista em classificação de documentos e arquivologia.\n"
@@ -111,16 +128,19 @@ def get_classify_prompt(parent_dir: str, current_dir: str) -> str:
                     dirs.append(entry)
 
         if not dirs:
-            print_error("Generate Prompt: No category folders found in the parent directory.")
+            print_error(
+                "Generate Prompt: No category folders found in the parent directory.")
             return ""
 
         for d in sorted(dirs):
             prompt += f"- {d}\n"
 
-        print_success(f"Generate Prompt: Found {len(dirs)} category folders to use in prompt.")
+        print_success(
+            f"Generate Prompt: Found {len(dirs)} category folders to use in prompt.")
 
     except Exception as e:
-        print_error(f"Generate Prompt: Error reading parent directory to generate prompt: {e}")
+        print_error(
+            f"Generate Prompt: Error reading parent directory to generate prompt: {e}")
         return ""
 
     prompt += (
@@ -149,7 +169,8 @@ def extract_pdf_text(file_path: str) -> str:
             reader = PyPDF2.PdfReader(pdf_file)
             total_pages = len(reader.pages)
 
-            print_step(f"Extract PDF Text: Found {total_pages} pages. Calculating extraction ranges...")
+            print_step(
+                f"Extract PDF Text: Found {total_pages} pages. Calculating extraction ranges...")
 
             if total_pages > 33:
                 mid_start = (total_pages // 2) - 5
@@ -161,7 +182,8 @@ def extract_pdf_text(file_path: str) -> str:
             else:
                 pages_to_extract = list(range(total_pages))
 
-            print_step(f"Extract PDF Text: Extracting text from {len(pages_to_extract)} selected pages.")
+            print_step(
+                f"Extract PDF Text: Extracting text from {len(pages_to_extract)} selected pages.")
             for page_num in pages_to_extract:
                 try:
                     page = reader.pages[page_num]
@@ -169,10 +191,12 @@ def extract_pdf_text(file_path: str) -> str:
                     if extracted:
                         text += extracted + "\n"
                 except Exception as inner_e:
-                    print_error(f"Extract PDF Text: Failed to extract text from page {page_num}: {inner_e}")
+                    print_error(
+                        f"Extract PDF Text: Failed to extract text from page {page_num}: {inner_e}")
 
         if text.strip():
-            print_success("Extract PDF Text: Text extraction completed successfully.")
+            print_success(
+                "Extract PDF Text: Text extraction completed successfully.")
         else:
             print_error("Extract PDF Text: Extracted text is empty.")
 
@@ -209,13 +233,16 @@ def query_model_classification(client: LMStd, pdf_text: str, prompt: str) -> str
                     break
 
         if content:
-            print_success(f"Query Classification Model: Model responded: {content.strip()}")
+            print_success(
+                f"Query Classification Model: Model responded: {content.strip()}")
             return content.strip()
 
-        print_error("Query Classification Model: Model returned an empty response.")
+        print_error(
+            "Query Classification Model: Model returned an empty response.")
         return ""
     except Exception as e:
-        print_error(f"Query Classification Model: API Error communicating with Local LM Studio: {e}")
+        print_error(
+            f"Query Classification Model: API Error communicating with Local LM Studio: {e}")
         raise ConnectionError(f"API Error: {e}")
 
 
@@ -233,10 +260,12 @@ def normalize_text(text: str) -> str:
 
 def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) -> Optional[str]:
     """Finds the most appropriate target directory based on the LLM response."""
-    print_step("Find Target Directory: Analyzing LLM response to match target folder...")
+    print_step(
+        "Find Target Directory: Analyzing LLM response to match target folder...")
 
     if not llm_response:
-        print_error("Find Target Directory: LLM response is empty, cannot match directory.")
+        print_error(
+            "Find Target Directory: LLM response is empty, cannot match directory.")
         return None
 
     normalized_response = normalize_text(llm_response)
@@ -275,14 +304,17 @@ def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) 
                 best_match = full_path
 
             if score >= 200:
-                print_success(f"Find Target Directory: Exact/High confidence match found: {full_path}")
+                print_success(
+                    f"Find Target Directory: Exact/High confidence match found: {full_path}")
                 return full_path
 
     except Exception as e:
-        print_error(f"Find Target Directory: Error reading parent directory: {e}")
+        print_error(
+            f"Find Target Directory: Error reading parent directory: {e}")
 
     if best_match and best_score > 0:
-        print_success(f"Find Target Directory: Best fuzzy match found: {best_match} (Score: {best_score})")
+        print_success(
+            f"Find Target Directory: Best fuzzy match found: {best_match} (Score: {best_score})")
         return best_match
 
     print_error("Find Target Directory: No suitable target directory matched.")
@@ -295,7 +327,8 @@ def handle_file_error(file_path: str, current_dir: str) -> None:
     Also attempts to move related files sharing the same basename.
     """
     func_name = "Move On Error"
-    print_step(f"{func_name}: Moving '{file_path}' to '!-ERRORS' to prevent loop...")
+    print_step(
+        f"{func_name}: Moving '{file_path}' to '!-ERRORS' to prevent loop...")
     base_name, ext = os.path.splitext(file_path)
     errors_dir = os.path.join(current_dir, "!-ERRORS")
     os.makedirs(errors_dir, exist_ok=True)
@@ -311,9 +344,11 @@ def handle_file_error(file_path: str, current_dir: str) -> None:
                 try:
                     shutil.move(os.path.join(current_dir, related_file),
                                 os.path.join(errors_dir, related_file))
-                    print_success(f"{func_name}: Moved related file '{related_file}' to '!-ERRORS'")
+                    print_success(
+                        f"{func_name}: Moved related file '{related_file}' to '!-ERRORS'")
                 except Exception as e:
-                    print_error(f"{func_name}: Failed to move related file {related_file}: {e}")
+                    print_error(
+                        f"{func_name}: Failed to move related file {related_file}: {e}")
     except Exception as e:
         print_error(f"{func_name}: Failed to move main file {file_path}: {e}")
 
@@ -354,9 +389,11 @@ def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> 
                 try:
                     shutil.move(os.path.join(
                         current_dir, related_file), related_target)
-                    print_success(f"Move Files: Moved related file to: {related_target}")
+                    print_success(
+                        f"Move Files: Moved related file to: {related_target}")
                 except Exception as e:
-                    print_error(f"Move Files: Error moving related file {related_file}: {e}")
+                    print_error(
+                        f"Move Files: Error moving related file {related_file}: {e}")
 
         return True
     except Exception as e:
@@ -398,76 +435,97 @@ def process_all_pdfs() -> None:
         total = len(files_to_process)
 
         if total == 0:
-            print_error("No PDF files found in the current directory. Nothing to do.")
+            print_error(
+                "No PDF files found in the current directory. Nothing to do.")
             return
 
         print_success(f"Found {total} PDF file(s).")
 
         for idx, file in enumerate(files_to_process):
-            print_step(f"=== Beginning processing cycle for file: {file} ({idx+1}/{total}) ===")
+            print_step(
+                f"=== Beginning processing cycle for file: {file} ({idx+1}/{total}) ===")
             try:
                 # 1. Extract Text
                 text = extract_pdf_text(os.path.join(current_dir, file))
                 if not text:
                     handle_file_error(file, current_dir)
                     fail_count += 1
-                    print_summary_box("Cycle Summary", total, success_count, fail_count)
-                    print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                    print_summary_box("Cycle Summary", total,
+                                      success_count, fail_count)
+                    print_summary_box("Overall Session Summary",
+                                      total, success_count, fail_count)
                 else:
                     # 2. LLM Classification
                     start_time = time.time()
-                    llm_response = query_model_classification(client, text, prompt_text)
+                    llm_response = query_model_classification(
+                        client, text, prompt_text)
                     elapsed_time = time.time() - start_time
                     log_message(f"LLM Processing Time: {elapsed_time:.2f}s")
 
                     if not llm_response:
                         handle_file_error(file, current_dir)
                         fail_count += 1
-                        print_summary_box("Cycle Summary", total, success_count, fail_count)
-                        print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                        print_summary_box(
+                            "Cycle Summary", total, success_count, fail_count)
+                        print_summary_box(
+                            "Overall Session Summary", total, success_count, fail_count)
                     else:
                         # 3. Directory Matching
-                        target_dir = find_target_directory(parent_dir, current_dir, llm_response)
+                        target_dir = find_target_directory(
+                            parent_dir, current_dir, llm_response)
                         if target_dir:
                             # 4. File Moving
-                            success = move_file_and_related(file, target_dir, current_dir)
+                            success = move_file_and_related(
+                                file, target_dir, current_dir)
                             if success:
                                 success_count += 1
                                 print_success(f"Fully processed {file}")
                             else:
                                 fail_count += 1
                                 print_error(f"Failed to fully process {file}")
-                                print_summary_box("Cycle Summary", total, success_count, fail_count)
-                                print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                                print_summary_box(
+                                    "Cycle Summary", total, success_count, fail_count)
+                                print_summary_box(
+                                    "Overall Session Summary", total, success_count, fail_count)
                         else:
                             handle_file_error(file, current_dir)
                             fail_count += 1
-                            print_summary_box("Cycle Summary", total, success_count, fail_count)
-                            print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                            print_summary_box(
+                                "Cycle Summary", total, success_count, fail_count)
+                            print_summary_box(
+                                "Overall Session Summary", total, success_count, fail_count)
 
             except ConnectionError as ce:
                 print_error(f"API Error: {ce}. Skipping to next file.")
                 fail_count += 1
-                print_summary_box("Cycle Summary", total, success_count, fail_count)
-                print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                print_summary_box("Cycle Summary", total,
+                                  success_count, fail_count)
+                print_summary_box("Overall Session Summary",
+                                  total, success_count, fail_count)
             except Exception as e:
                 print_error(f"Unexpected error processing '{file}': {e}")
                 traceback.print_exc()
                 handle_file_error(file, current_dir)
                 fail_count += 1
-                print_summary_box("Cycle Summary", total, success_count, fail_count)
-                print_summary_box("Overall Session Summary", total, success_count, fail_count)
+                print_summary_box("Cycle Summary", total,
+                                  success_count, fail_count)
+                print_summary_box("Overall Session Summary",
+                                  total, success_count, fail_count)
 
-            print_progress(idx + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
+            print_progress(
+                idx + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
 
         print_success("Batch processing cycle complete.")
         print_summary_box("Cycle Summary", total, success_count, fail_count)
-        print_summary_box("Overall Session Summary", total, success_count, fail_count)
+        print_summary_box("Overall Session Summary",
+                          total, success_count, fail_count)
 
     except Exception as e:
         print_error(f"Critical error during batch processing: {e}")
-        print_summary_box("Cycle Summary (Interrupted)", total, success_count, fail_count)
-        print_summary_box("Overall Session Summary (Interrupted)", total, success_count, fail_count)
+        print_summary_box("Cycle Summary (Interrupted)",
+                          total, success_count, fail_count)
+        print_summary_box("Overall Session Summary (Interrupted)",
+                          total, success_count, fail_count)
 
 
 def main() -> None:

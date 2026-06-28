@@ -1,14 +1,15 @@
+import glob
 import os
 import re
-import glob
-import time
 import shutil
-import unicodedata
+import time
 import traceback
-import PyPDF2
-from typing import Optional, List, Tuple
+import unicodedata
 from datetime import datetime
-from lmstd import LMStd, ChatResponse
+from typing import List, Optional, Tuple
+
+import PyPDF2
+from lmstd import ChatResponse, LMStd
 
 # --- Visualization and Logging Helpers ---
 
@@ -461,8 +462,10 @@ def main() -> None:
                             handle_file_error(
                                 file, current_dir)
                             cycle_fails += 1
-                            print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                            print_summary_box(
+                                "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
+                                              cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                             continue
 
                         # 2. LLM Classification
@@ -477,8 +480,10 @@ def main() -> None:
                             handle_file_error(
                                 file, current_dir)
                             cycle_fails += 1
-                            print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                            print_summary_box(
+                                "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
+                                              cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                             time.sleep(2)
                             continue
 
@@ -493,22 +498,28 @@ def main() -> None:
                                 cycle_success += 1
                             else:
                                 cycle_fails += 1
-                                print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                                print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                                print_summary_box(
+                                    "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                                print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
+                                                  cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                                 time.sleep(2)
                         else:
                             handle_file_error(
                                 file, current_dir)
                             cycle_fails += 1
-                            print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                            print_summary_box(
+                                "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
+                                              cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
 
                     except ConnectionError as ce:
                         print_error(
                             "Cycle Loop", f"API Error: {ce}. Skipping to next file.")
                         cycle_fails += 1
-                        print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                        print_summary_box(
+                            "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
+                                          cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                         time.sleep(2)
                     except Exception as e:
                         print_error(
@@ -516,8 +527,10 @@ def main() -> None:
                         traceback.print_exc()
                         handle_file_error(file, current_dir)
                         cycle_fails += 1
-                        print_summary_box("Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails + cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                        print_summary_box(
+                            "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
+                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
+                                          cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
                         time.sleep(2)
 
                 # End of Cycle
