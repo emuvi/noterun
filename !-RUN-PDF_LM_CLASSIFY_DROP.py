@@ -91,8 +91,20 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         print_error(f"Failed to print summary box: {e}")
 
 
+_cached_prompt = None
+_cached_parent_mtime = 0
+
 def get_classify_prompt(parent_dir: str, current_dir: str) -> str:
     """Generates the prompt instruction dynamically based on parent directory folders."""
+    global _cached_prompt, _cached_parent_mtime
+    try:
+        current_mtime = os.stat(parent_dir).st_mtime
+    except OSError:
+        current_mtime = 0
+
+    if _cached_prompt is not None and current_mtime == _cached_parent_mtime:
+        return _cached_prompt
+
     print_step("Scanning target categories in parent directory...")
 
     prompt = (
@@ -130,6 +142,8 @@ def get_classify_prompt(parent_dir: str, current_dir: str) -> str:
         "3. Sua resposta DEVE SER APENAS O NOME EXATO DA CATEGORIA. Não inclua absolutamente mais nada.\n"
         "4. NÃO forneça justificativas, NÃO escreva frases como 'A categoria é', e NÃO coloque pontos finais após o nome.\n"
     )
+    _cached_prompt = prompt
+    _cached_parent_mtime = current_mtime
     return prompt
 
 
