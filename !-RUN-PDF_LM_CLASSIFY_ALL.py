@@ -74,9 +74,12 @@ def print_summary_box(title: str, total: int, successes: int, fails: int) -> Non
         "\n" + "╔" + "═" * (box_width - 2) + "╗",
         "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
         "╠" + "═" * (box_width - 2) + "╣",
-        "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
-        "║" + f" ✅ Successes          : {successes:<21}".ljust(box_width - 2) + "║",
-        "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+        "║" +
+        f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
+        "║" +
+        f" ✅ Successes          : {successes:<21}".ljust(box_width - 2) + "║",
+        "║" +
+        f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
         "╚" + "═" * (box_width - 2) + "╝\n"
     ]
     for line in lines:
@@ -350,7 +353,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     try:
         shutil.move(os.path.join(current_dir, file_path), error_path)
         print_success(f"{func_name}: Moved main file to '!-ERRORS'")
-        
+
         # Save the error log
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:

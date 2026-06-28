@@ -330,7 +330,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
         shutil.move(os.path.join(current_dir, file_path), error_path)
         print_success(
             func_name, f"Moved main file to '!-ERRORS'")
-            
+
         # Save the error log
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
@@ -522,6 +522,8 @@ def main() -> None:
                             if success:
                                 cycle_success += 1
                             else:
+                                error_msg = f"Failed to move file '{file}' to target directory '{target_dir}'."
+                                handle_file_error(file, current_dir, error_msg)
                                 cycle_fails += 1
                                 print_summary_box(
                                     "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)

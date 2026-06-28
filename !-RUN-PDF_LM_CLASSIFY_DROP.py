@@ -94,9 +94,13 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
             "\n" + "╔" + "═" * (box_width - 2) + "╗",
             "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
             "╠" + "═" * (box_width - 2) + "╣",
-            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
-            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║",
-            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+            "║" +
+            f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
+            "║" +
+            f" ✅ Successes          : {success:<21}".ljust(
+                box_width - 2) + "║",
+            "║" +
+            f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
             "╚" + "═" * (box_width - 2) + "╝\n"
         ]
         for line in lines:
@@ -487,7 +491,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     try:
         shutil.move(os.path.join(current_dir, file_path), error_path)
         print_success(f"Moved main file to '!-ERRORS'")
-        
+
         # Save the error log
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
@@ -500,9 +504,11 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
                 try:
                     shutil.move(os.path.join(current_dir, related_file),
                                 os.path.join(errors_dir, related_file))
-                    print_success(f"Moved related file '{related_file}' to '!-ERRORS'")
+                    print_success(
+                        f"Moved related file '{related_file}' to '!-ERRORS'")
                 except Exception as e:
-                    print_error(f"Failed to move related file {related_file}: {e}")
+                    print_error(
+                        f"Failed to move related file {related_file}: {e}")
     except Exception as e:
         print_error(f"Failed to move main file {file_path}: {e}")
 
@@ -594,7 +600,8 @@ class DropZone(QLabel):
             if not text:
                 error_msg = "Failed to extract text or PDF is empty. Processing aborted."
                 print_error(error_msg)
-                handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+                handle_file_error(os.path.basename(file_path),
+                                  os.path.dirname(file_path), error_msg)
                 fail_count += 1
                 print_summary_box("Cycle Summary", total,
                                   success_count, fail_count)
@@ -612,7 +619,8 @@ class DropZone(QLabel):
                 else:
                     error_msg = f"Failed to classify and move dropped file: {file_path}"
                     print_error(error_msg)
-                    handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+                    handle_file_error(os.path.basename(
+                        file_path), os.path.dirname(file_path), error_msg)
                     fail_count += 1
                     print_summary_box("Cycle Summary", total,
                                       success_count, fail_count)
@@ -630,7 +638,8 @@ class DropZone(QLabel):
         except Exception as e:
             error_msg = f"Critical error during batch processing: {e}\n{traceback.format_exc()}"
             print_error(error_msg)
-            handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+            handle_file_error(os.path.basename(file_path),
+                              os.path.dirname(file_path), error_msg)
             print_summary_box("Cycle Summary (Interrupted)",
                               total, success_count, fail_count)
             print_summary_box(

@@ -460,6 +460,8 @@ def handle_file_error(file: str, current_dir: str, error_log: str) -> None:
             func_name, f"Moved {sidecars_renamed} sidecar files.")
     except FileNotFoundError as fnfe:
         print_error(func_name, str(fnfe))
+        global _failed_to_move_files
+        _failed_to_move_files.add(file)
     except Exception as e:
         print_error(
             func_name, f"Could not move file: {e}")

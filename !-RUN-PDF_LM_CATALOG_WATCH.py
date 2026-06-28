@@ -44,7 +44,8 @@ def log_step(step_name: str, status: str = "STARTING") -> None:
 
 def log_step_success(step_name: str, message: str = "") -> None:
     """Logs the success of a specific step."""
-    msg = f"  [✓] {step_name}... [SUCCESS]" + (f" - {message}" if message else "")
+    msg = f"  [✓] {step_name}... [SUCCESS]" + \
+        (f" - {message}" if message else "")
     print(msg)
     event_chain.append(msg)
 
@@ -633,11 +634,11 @@ def handle_unreadable_file(file: str, current_dir: str, error_log: str) -> None:
                     os.path.join(errors_dir, file))
         log_message(
             f"[{file}] -> Moved to '!-ERRORS' to prevent looping.")
-            
+
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
-            
+
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
@@ -664,11 +665,11 @@ def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
                     os.path.join(errors_dir, file))
         log_message(
             f"[{file}] -> Moved to '!-ERRORS' to prevent looping on this file.")
-            
+
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
-            
+
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
@@ -796,6 +797,8 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             return True
         except Exception as e:
             log_step_error("Renaming file", str(e))
+            error_msg = f"Failed to rename or move file '{file}' to '{new_path}': {e}"
+            handle_error_file(file, current_dir, error_msg)
             time.sleep(2)
             return False
 
