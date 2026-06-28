@@ -412,8 +412,6 @@ def process_all_pdfs() -> None:
                     rename_file_on_error(file, "(UNREADABLE)", current_dir)
                     fail_count += 1
                 else:
-                    text = text[:4000]
-
                     # 2. LLM Classification
                     start_time = time.time()
                     llm_response = query_model_classification(client, text, prompt_text)

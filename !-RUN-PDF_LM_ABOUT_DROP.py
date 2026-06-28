@@ -335,10 +335,6 @@ def build_summary_prompt(text: str) -> str:
     print_step("Building the prompt for the LLM.")
     prompt = ""
     try:
-        print_step("Truncating text to max 4000 chars.")
-        truncated_text = text[:4000]
-        print_success(f"Truncated text to {len(truncated_text)} characters.")
-
         print_step("Constructing final prompt string.")
         prompt = (
             "Based on the following text extracted from a PDF, tell me what it is about "
@@ -346,7 +342,7 @@ def build_summary_prompt(text: str) -> str:
             "without conversational filler. Do not use quotes or special characters that "
             "are invalid in filenames. Respond in the exact same language as the provided text, "
             "and ensure perfect spell checking on the language of the document.\n\n"
-            f"### TEXT ###\n{truncated_text}"
+            f"### TEXT ###\n{text}"
         )
         print_success("Prompt built successfully.")
     except Exception as e:

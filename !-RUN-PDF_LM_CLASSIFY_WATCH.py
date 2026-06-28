@@ -463,8 +463,6 @@ def main() -> None:
                             cycle_fails += 1
                             continue
 
-                        text = text[:4000]
-
                         # 2. LLM Classification
                         start_time = time.time()
                         llm_response = query_model_classification(

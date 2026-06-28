@@ -685,8 +685,6 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             handle_unreadable_file(file, current_dir)
             return False
 
-        text = text[:4000]
-
         try:
             log_step("Detecting language")
             lang_code = detect(text)

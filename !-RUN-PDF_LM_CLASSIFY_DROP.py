@@ -417,8 +417,6 @@ def classify_and_move_pdf(file_path: str, pdf_text: str) -> bool:
     if not prompt:
         print_error("Failed to build prompt. Aborting classify process.")
         return False
-    
-    pdf_text = pdf_text[:4000]
 
     print_step("Calling query_model_classification")
     llm_response = query_model_classification(pdf_text, prompt)

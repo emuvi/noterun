@@ -284,14 +284,13 @@ def build_summary_prompt(text: str) -> str:
     func_name = "Build Summary Prompt"
     print_step(func_name, "Building prompt string...")
     try:
-        truncated_text = text[:4000]
         prompt = (
             "Based on the following text extracted from a PDF, tell me what it is about "
             "in a maximum of 180 characters. Be concise and direct, providing only the summary "
             "without conversational filler. Do not use quotes or special characters that "
             "are invalid in filenames. Respond in the exact same language as the provided text, "
             "and ensure perfect spell checking on the language of the document.\n\n"
-            f"### TEXT ###\n{truncated_text}"
+            f"### TEXT ###\n{text}"
         )
         print_success(func_name, "Prompt successfully built.")
         return prompt

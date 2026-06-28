@@ -821,11 +821,9 @@ class DropZone(QLabel):
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to generate catalog filename.")
 
-                text_trunc = text[:4000]
-
                 try:
                     print_step("Detecting language")
-                    lang_code = detect(text_trunc)
+                    lang_code = detect(text)
                     print_success(f"Language detected: {lang_code}")
                 except Exception as e:
                     lang_code = "xx"
@@ -836,7 +834,7 @@ class DropZone(QLabel):
                 fields = ["Author", "Series", "Volume", "Title", "Subtitle", "Edition"]
                 prompts = FIELD_PROMPTS
                 
-                raw_extracted_data = query_model_single_call(text_trunc, fields, prompts)
+                raw_extracted_data = query_model_single_call(text, fields, prompts)
                 
                 extracted_data: Dict[str, str] = {}
                 for field in fields:
