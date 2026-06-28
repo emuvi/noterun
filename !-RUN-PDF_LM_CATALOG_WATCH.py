@@ -723,7 +723,20 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             print(f"  - {field}: {cleaned_result}")
 
         if extracted_data.get("Author", "EMPTY") == "EMPTY" and extracted_data.get("Series", "EMPTY") == "EMPTY" and extracted_data.get("Title", "EMPTY") == "EMPTY":
-            log_message(f"[{file}] -> Skipped: No Author, Series, or Title found.")
+            log_message(f"[{file}] -> Skipped: No Author, Series, or Title found. Moving to !-ERRORS.")
+            errors_dir = os.path.join(current_dir, "!-ERRORS")
+            os.makedirs(errors_dir, exist_ok=True)
+            try:
+                shutil.move(os.path.join(current_dir, file), os.path.join(errors_dir, file))
+                base_name = os.path.splitext(file)[0]
+                for related_file in os.listdir(current_dir):
+                    if related_file != file and os.path.splitext(related_file)[0] == base_name:
+                        try:
+                            shutil.move(os.path.join(current_dir, related_file), os.path.join(errors_dir, related_file))
+                        except Exception:
+                            pass
+            except Exception as move_e:
+                log_message(f"[{file}] -> Error moving to !-ERRORS: {move_e}")
             return False
 
         fmt_author = format_author(extracted_data["Author"], current_nlp)
