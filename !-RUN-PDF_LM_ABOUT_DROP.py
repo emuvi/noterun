@@ -650,6 +650,8 @@ class DropZone(QLabel):
         try:
             print_step("Initializing DropZone widget.")
             super().__init__()
+            self.session_success_count = 0
+            self.session_fail_count = 0
             self.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.setText(
                 "Drag and Drop PDF File Here\n\n🔹 Action: Summarize File\n(Generates a short summary for the filename)")
@@ -718,9 +720,8 @@ class DropZone(QLabel):
         event_chain.clear()
         print_step(
             f"=== Beginning processing cycle for dropped file: {file_path} ===")
-        success_count = 0
-        fail_count = 0
-        total = 1
+        cycle_success = 0
+        cycle_fail = 0
 
         try:
             print_step("Attempting to extract text from dropped PDF.")
@@ -730,38 +731,46 @@ class DropZone(QLabel):
                 error_msg = "Failed to extract text or PDF is empty. Processing aborted."
                 print_error(error_msg)
                 handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
-                fail_count += 1
+                cycle_fail = 1
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to rename the PDF based on summary.")
 
                 rename_success = rename_pdf_from_summary(file_path, text)
                 if rename_success:
-                    success_count += 1
+                    cycle_success = 1
                     print_success(
                         f"Completed processing for dropped file: {file_path}")
                 else:
                     error_msg = f"Failed to rename dropped file: {file_path}"
                     print_error(error_msg)
                     handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
-                    fail_count += 1
+                    cycle_fail = 1
 
-            print_progress(1, total, prefix='Dropped File Progress',
+            self.session_success_count += cycle_success
+            self.session_fail_count += cycle_fail
+            session_total = self.session_success_count + self.session_fail_count
+
+            print_progress(1, 1, prefix='Dropped File Progress',
                            suffix='Complete', length=30)
-            print_success("Batch processing cycle complete.")
-            print_summary_box("Cycle Summary", total,
-                              success_count, fail_count)
+            print_summary_box("Cycle Summary", 1,
+                              cycle_success, cycle_fail)
             print_summary_box("Overall Session Summary",
-                              total, success_count, fail_count)
+                              session_total, self.session_success_count, self.session_fail_count)
 
         except Exception as e:
             error_msg = f"Critical error processing dropped file: {e}\n{traceback.format_exc()}"
             print_error(error_msg)
             handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
+            
+            cycle_fail = 1
+            self.session_fail_count += cycle_fail
+            session_total = self.session_success_count + self.session_fail_count
+            
             print_summary_box("Cycle Summary (Interrupted)",
-                              total, success_count, fail_count)
+                              1, cycle_success, cycle_fail)
             print_summary_box(
-                "Overall Session Summary (Interrupted)", total, success_count, fail_count)
+                "Overall Session Summary (Interrupted)", session_total, self.session_success_count, self.session_fail_count)
 
 
 class MainWindow(QMainWindow):

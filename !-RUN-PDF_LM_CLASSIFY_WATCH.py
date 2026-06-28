@@ -486,6 +486,8 @@ def main() -> None:
 
                 for index, file in enumerate(files_to_process, 1):
                     event_chain.clear()
+                    file_success = 0
+                    file_fail = 0
                     percentage = (index / total_files_in_cycle) * 100
                     print(
                         f"\n[{get_current_time()}] --- Processing File {index} of {total_files_in_cycle} ({percentage:.1f}%) ---")
@@ -499,68 +501,52 @@ def main() -> None:
                             handle_file_error(
                                 file, current_dir, error_msg)
                             cycle_fails += 1
-                            print_summary_box(
-                                "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
-                                              cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
-                            continue
-
-                        # 2. LLM Classification
-                        start_time = time.time()
-                        llm_response = query_model_classification(
-                            client, text, prompt_text)
-                        elapsed_time = time.time() - start_time
-                        log_message(
-                            f"LLM Processing Time: {elapsed_time:.2f}s")
-
-                        if not llm_response:
-                            error_msg = "LLM returned empty or unparseable response."
-                            handle_file_error(
-                                file, current_dir, error_msg)
-                            cycle_fails += 1
-                            print_summary_box(
-                                "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
-                                              cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
-                            time.sleep(2)
-                            continue
-
-                        # 3. Directory Matching
-                        target_dir = find_target_directory(
-                            parent_dir, current_dir, llm_response)
-                        if target_dir:
-                            # 4. File Moving
-                            success = move_file_and_related(
-                                file, target_dir, current_dir)
-                            if success:
-                                cycle_success += 1
-                            else:
-                                error_msg = f"Failed to move file '{file}' to target directory '{target_dir}'."
-                                handle_file_error(file, current_dir, error_msg)
-                                cycle_fails += 1
-                                print_summary_box(
-                                    "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                                print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
-                                                  cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
-                                time.sleep(2)
+                            file_fail = 1
                         else:
-                            error_msg = "No suitable target directory found for file."
-                            handle_file_error(
-                                file, current_dir, error_msg)
-                            cycle_fails += 1
-                            print_summary_box(
-                                "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                            print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
-                                              cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                            # 2. LLM Classification
+                            start_time = time.time()
+                            llm_response = query_model_classification(
+                                client, text, prompt_text)
+                            elapsed_time = time.time() - start_time
+                            log_message(
+                                f"LLM Processing Time: {elapsed_time:.2f}s")
+
+                            if not llm_response:
+                                error_msg = "LLM returned empty or unparseable response."
+                                handle_file_error(
+                                    file, current_dir, error_msg)
+                                cycle_fails += 1
+                                file_fail = 1
+                                time.sleep(2)
+                            else:
+                                # 3. Directory Matching
+                                target_dir = find_target_directory(
+                                    parent_dir, current_dir, llm_response)
+                                if target_dir:
+                                    # 4. File Moving
+                                    success = move_file_and_related(
+                                        file, target_dir, current_dir)
+                                    if success:
+                                        cycle_success += 1
+                                        file_success = 1
+                                    else:
+                                        error_msg = f"Failed to move file '{file}' to target directory '{target_dir}'."
+                                        handle_file_error(file, current_dir, error_msg)
+                                        cycle_fails += 1
+                                        file_fail = 1
+                                        time.sleep(2)
+                                else:
+                                    error_msg = "No suitable target directory found for file."
+                                    handle_file_error(
+                                        file, current_dir, error_msg)
+                                    cycle_fails += 1
+                                    file_fail = 1
 
                     except ConnectionError as ce:
                         print_error(
                             "Cycle Loop", f"API Error: {ce}. Skipping to next file.")
                         cycle_fails += 1
-                        print_summary_box(
-                            "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
-                                          cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                        file_fail = 1
                         time.sleep(2)
                     except Exception as e:
                         error_msg = f"Unexpected error processing '{file}': {e}\n{traceback.format_exc()}"
@@ -568,22 +554,16 @@ def main() -> None:
                             "Cycle Loop", error_msg)
                         handle_file_error(file, current_dir, error_msg)
                         cycle_fails += 1
-                        print_summary_box(
-                            "Cycle Summary", total_files_in_cycle, cycle_success, cycle_fails)
-                        print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
-                                          cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
+                        file_fail = 1
                         time.sleep(2)
+                        
+                    print_summary_box("Cycle Summary", 1, file_success, file_fail)
+                    print_summary_box("Overall Session Summary", total_session_success + total_session_fails +
+                                      cycle_success + cycle_fails, total_session_success + cycle_success, total_session_fails + cycle_fails)
 
                 # End of Cycle
                 total_session_success += cycle_success
                 total_session_fails += cycle_fails
-
-                print_summary_box(
-                    title=f"Cycle Summary",
-                    total=total_files_in_cycle,
-                    success=cycle_success,
-                    fails=cycle_fails
-                )
 
                 print_summary_box(
                     title=f"Overall Session Summary",

@@ -673,6 +673,8 @@ def process_all_pdfs() -> None:
             event_chain.clear()
             print_step(
                 f"=== Beginning processing cycle for file: {filename} ({idx+1}/{total}) ===")
+            cycle_success = 0
+            cycle_fail = 0
             try:
                 file_path = os.path.join(current_dir, filename)
 
@@ -684,6 +686,7 @@ def process_all_pdfs() -> None:
                     print_error(error_msg)
                     handle_file_error(filename, current_dir, error_msg)
                     fail_count += 1
+                    cycle_fail = 1
                 else:
                     print_success(
                         f"Extracted {len(text)} characters of text from '{filename}'.")
@@ -691,31 +694,35 @@ def process_all_pdfs() -> None:
                     rename_success = rename_pdf_from_summary(file_path, text)
                     if rename_success:
                         success_count += 1
+                        cycle_success = 1
                         print_success(f"Fully processed {filename}")
                     else:
                         error_msg = f"Failed to rename and fully process {filename}"
                         print_error(error_msg)
                         handle_file_error(filename, current_dir, error_msg)
                         fail_count += 1
+                        cycle_fail = 1
 
             except Exception as file_err:
                 error_msg = f"Unexpected error processing file '{filename}': {file_err}\n{traceback.format_exc()}"
                 print_error(error_msg)
                 handle_file_error(filename, current_dir, error_msg)
                 fail_count += 1
+                cycle_fail = 1
 
             print_progress(
                 idx + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
+            
+            print_summary_box("Cycle Summary", 1, cycle_success, cycle_fail)
+            print_summary_box("Overall Session Summary",
+                              success_count + fail_count, success_count, fail_count)
 
         print_success("Batch processing cycle complete.")
-        print_summary_box("Cycle Summary", total, success_count, fail_count)
         print_summary_box("Overall Session Summary",
                           total, success_count, fail_count)
 
     except Exception as e:
         print_error(f"Critical error during batch processing: {e}")
-        print_summary_box("Cycle Summary (Interrupted)",
-                          total, success_count, fail_count)
         print_summary_box("Overall Session Summary (Interrupted)",
                           total, success_count, fail_count)
 

@@ -894,6 +894,8 @@ def process_all_pdfs() -> None:
 
         for index, file in enumerate(files_to_process):
             event_chain.clear()
+            file_success = 0
+            file_fail = 0
             try:
                 progress_percentage = (
                     (index + 1) / total_files_in_cycle) * 100
@@ -905,26 +907,24 @@ def process_all_pdfs() -> None:
 
                 if success:
                     processed_files += 1
+                    file_success = 1
                     log_message(
                         f"[{file}] -> Success! Cycle total: {processed_files}")
                 else:
                     failed_files += 1
+                    file_fail = 1
                     log_message(
                         f"[{file}] -> Failed! Cycle total: {failed_files}")
-                    print_summary_box(
-                        "Cycle Summary", total_files_in_cycle, processed_files, failed_files)
-                    print_summary_box(
-                        "Overall Session Summary", total_files_in_cycle, processed_files, failed_files)
             except Exception as e:
                 log_step_error(f"Processing file {file}", str(e))
                 failed_files += 1
-                print_summary_box(
-                    "Cycle Summary", total_files_in_cycle, processed_files, failed_files)
-                print_summary_box(
-                    "Overall Session Summary", total_files_in_cycle, processed_files, failed_files)
+                file_fail = 1
 
-        print_summary_box("Cycle Summary", total_files_in_cycle,
-                          processed_files, failed_files)
+            print_summary_box(
+                "Cycle Summary", 1, file_success, file_fail)
+            print_summary_box(
+                "Overall Session Summary", processed_files + failed_files, processed_files, failed_files)
+
         print_summary_box("Overall Session Summary",
                           total_files_in_cycle, processed_files, failed_files)
 

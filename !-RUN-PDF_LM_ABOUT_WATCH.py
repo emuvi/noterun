@@ -654,6 +654,8 @@ def main() -> None:
                     f"\n[{get_current_time()}] ---> STARTING NEW CYCLE: {cycle_total} files to process <---")
 
                 for index, file in enumerate(files_to_process):
+                    file_success = 0
+                    file_fail = 0
                     try:
                         # Progress percentage
                         progress_pct = ((index) / cycle_total) * 100
@@ -666,9 +668,11 @@ def main() -> None:
                         if success:
                             cycle_success += 1
                             total_session_success += 1
+                            file_success = 1
                         else:
                             cycle_fails += 1
                             total_session_fails += 1
+                            file_fail = 1
 
                     except Exception as e:
                         error_msg = f"Unexpected error while processing file '{file}': {e}\n{traceback.format_exc()}"
@@ -676,6 +680,20 @@ def main() -> None:
                         handle_file_error(file, current_dir, error_msg)
                         cycle_fails += 1
                         total_session_fails += 1
+                        file_fail = 1
+                    
+                    print_summary_box(
+                        title=f"Cycle Summary",
+                        total=1,
+                        success=file_success,
+                        fails=file_fail
+                    )
+                    print_summary_box(
+                        title=f"Overall Session Summary",
+                        total=total_session_success + total_session_fails,
+                        success=total_session_success,
+                        fails=total_session_fails
+                    )
 
                 # End of file loop - 100% progress
                 print(
@@ -683,12 +701,6 @@ def main() -> None:
 
                 # 3. Print summaries
                 if cycle_total > 0:
-                    print_summary_box(
-                        title=f"Cycle Summary",
-                        total=cycle_total,
-                        success=cycle_success,
-                        fails=cycle_fails
-                    )
                     print_summary_box(
                         title=f"Overall Session Summary",
                         total=total_session_success + total_session_fails,

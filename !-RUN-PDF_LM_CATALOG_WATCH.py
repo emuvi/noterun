@@ -931,6 +931,8 @@ def main_loop() -> None:
             total_files_in_cycle = len(files_to_process)
 
             for index, file in enumerate(files_to_process):
+                file_success = 0
+                file_fail = 0
                 try:
                     progress_percentage = (
                         (index + 1) / total_files_in_cycle) * 100
@@ -942,33 +944,35 @@ def main_loop() -> None:
 
                     if success:
                         processed_files += 1
+                        file_success = 1
                         log_message(
                             f"[{file}] -> Success! Cycle total: {processed_files}")
                     else:
                         failed_files += 1
+                        file_fail = 1
                         log_message(
                             f"[{file}] -> Failed! Cycle total: {failed_files}")
-                        print_summary_box(
-                            "Cycle Summary", total_files_in_cycle, processed_files, failed_files)
-                        print_summary_box("Overall Session Summary", total_processed_files + total_failed_files + processed_files +
-                                          failed_files, total_processed_files + processed_files, total_failed_files + failed_files)
                 except Exception as e:
                     log_step_error(f"Processing file {file}", str(e))
                     failed_files += 1
-                    print_summary_box(
-                        "Cycle Summary", total_files_in_cycle, processed_files, failed_files)
-                    print_summary_box("Overall Session Summary", total_processed_files + total_failed_files + processed_files +
-                                      failed_files, total_processed_files + processed_files, total_failed_files + failed_files)
+                    file_fail = 1
+                
+                print_summary_box(
+                    title=f"Cycle Summary",
+                    total=1,
+                    success=file_success,
+                    fails=file_fail
+                )
+                print_summary_box(
+                    title=f"Overall Session Summary",
+                    total=total_processed_files + total_failed_files + processed_files + failed_files,
+                    success=total_processed_files + processed_files,
+                    fails=total_failed_files + failed_files
+                )
 
             if processed_files > 0 or failed_files > 0:
                 total_processed_files += processed_files
                 total_failed_files += failed_files
-                print_summary_box(
-                    title=f"Cycle Summary",
-                    total=processed_files + failed_files,
-                    success=processed_files,
-                    fails=failed_files
-                )
                 print_summary_box(
                     title=f"Overall Session Summary",
                     total=total_processed_files + total_failed_files,

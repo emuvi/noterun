@@ -520,6 +520,8 @@ def process_all_pdfs() -> None:
 
         for index, file in enumerate(files_to_process):
             event_chain.clear()
+            file_success = 0
+            file_fail = 0
             print_step(
                 f"=== Beginning processing cycle for file: {file} ({index+1}/{total}) ===")
             try:
@@ -529,6 +531,7 @@ def process_all_pdfs() -> None:
                     error_msg = "Failed to extract text or PDF is empty."
                     handle_file_error(file, current_dir, error_msg)
                     fail_count += 1
+                    file_fail = 1
                 else:
                     # 2. LLM Classification
                     start_time = time.time()
@@ -541,6 +544,7 @@ def process_all_pdfs() -> None:
                         error_msg = "LLM returned empty or unparseable response."
                         handle_file_error(file, current_dir, error_msg)
                         fail_count += 1
+                        file_fail = 1
                     else:
                         # 3. Directory Matching
                         target_dir = find_target_directory(
@@ -551,40 +555,42 @@ def process_all_pdfs() -> None:
                                 file, target_dir, current_dir)
                             if success:
                                 success_count += 1
+                                file_success = 1
                                 print_success(f"Fully processed {file}")
                             else:
                                 fail_count += 1
+                                file_fail = 1
                                 print_error(f"Failed to fully process {file}")
-                                print_summary_box(
-                                    "Cycle Summary", total, success_count, fail_count)
-                                print_summary_box(
-                                    "Overall Session Summary", total, success_count, fail_count)
                         else:
                             error_msg = "No suitable target directory found for file."
                             handle_file_error(file, current_dir, error_msg)
                             fail_count += 1
+                            file_fail = 1
 
             except ConnectionError as ce:
                 print_error(f"API Error: {ce}. Skipping to next file.")
                 fail_count += 1
+                file_fail = 1
             except Exception as e:
                 error_msg = f"Unexpected error processing '{file}': {e}\n{traceback.format_exc()}"
                 print_error(error_msg)
                 handle_file_error(file, current_dir, error_msg)
                 fail_count += 1
+                file_fail = 1
 
             print_progress(
                 index + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
+                
+            print_summary_box("Cycle Summary", 1, file_success, file_fail)
+            print_summary_box("Overall Session Summary",
+                              success_count + fail_count, success_count, fail_count)
 
         print_success("Batch processing cycle complete.")
-        print_summary_box("Cycle Summary", total, success_count, fail_count)
         print_summary_box("Overall Session Summary",
                           total, success_count, fail_count)
 
     except Exception as e:
         print_error(f"Critical error during batch processing: {e}")
-        print_summary_box("Cycle Summary (Interrupted)",
-                          total, success_count, fail_count)
         print_summary_box("Overall Session Summary (Interrupted)",
                           total, success_count, fail_count)
 
