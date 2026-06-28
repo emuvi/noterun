@@ -3,6 +3,7 @@ import re
 import glob
 import time
 import sys
+import shutil
 import difflib
 import PyPDF2
 import json
@@ -634,18 +635,21 @@ def get_files_to_process(current_dir: str) -> List[str]:
 
 
 def handle_unreadable_file(file: str, current_dir: str) -> None:
-    """Renames an unreadable file to prevent looping."""
+    """Renames an unreadable file to prevent looping and moves to '!- ERRORS'."""
     try:
         log_step(f"Handling unreadable file: {file}")
         base_name, ext = os.path.splitext(file)
         error_name = f"{base_name} (UNREADABLE){ext}"
-        os.rename(os.path.join(current_dir, file), os.path.join(current_dir, error_name))
-        log_message(f"[{file}] -> Renamed to {error_name} to prevent looping.")
+        errors_dir = os.path.join(current_dir, "!- ERRORS")
+        os.makedirs(errors_dir, exist_ok=True)
+
+        shutil.move(os.path.join(current_dir, file), os.path.join(errors_dir, error_name))
+        log_message(f"[{file}] -> Renamed to {error_name} and moved to '!- ERRORS' to prevent looping.")
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 rel_ext = os.path.splitext(related_file)[1]
                 try:
-                    os.rename(os.path.join(current_dir, related_file), os.path.join(current_dir, f"{base_name} (UNREADABLE){rel_ext}"))
+                    shutil.move(os.path.join(current_dir, related_file), os.path.join(errors_dir, f"{base_name} (UNREADABLE){rel_ext}"))
                 except Exception:
                     pass
         log_step_success(f"Handling unreadable file: {file}")
@@ -654,18 +658,21 @@ def handle_unreadable_file(file: str, current_dir: str) -> None:
 
 
 def handle_error_file(file: str, current_dir: str) -> None:
-    """Renames a file that caused an error to prevent looping."""
+    """Renames a file that caused an error to prevent looping and moves to '!- ERRORS'."""
     try:
         log_step(f"Handling error file: {file}")
         base_name, ext = os.path.splitext(file)
         error_name = f"{base_name} (ERROR){ext}"
-        os.rename(os.path.join(current_dir, file), os.path.join(current_dir, error_name))
-        log_message(f"[{file}] -> Renamed to {error_name} to prevent looping on this file.")
+        errors_dir = os.path.join(current_dir, "!- ERRORS")
+        os.makedirs(errors_dir, exist_ok=True)
+
+        shutil.move(os.path.join(current_dir, file), os.path.join(errors_dir, error_name))
+        log_message(f"[{file}] -> Renamed to {error_name} and moved to '!- ERRORS' to prevent looping on this file.")
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 rel_ext = os.path.splitext(related_file)[1]
                 try:
-                    os.rename(os.path.join(current_dir, related_file), os.path.join(current_dir, f"{base_name} (ERROR){rel_ext}"))
+                    shutil.move(os.path.join(current_dir, related_file), os.path.join(errors_dir, f"{base_name} (ERROR){rel_ext}"))
                 except Exception:
                     pass
         log_step_success(f"Handling error file: {file}")
@@ -732,20 +739,21 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         new_file_name = f"{new_base_name}.pdf"
 
         old_path = os.path.join(current_dir, file)
-        new_path = os.path.join(current_dir, new_file_name)
+        target_dir = os.path.dirname(current_dir)
+        new_path = os.path.join(target_dir, new_file_name)
 
         if os.path.exists(new_path) and old_path.lower() != new_path.lower():
             counter = 2
             while True:
                 new_file_name = f"{new_base_name} ({counter}).pdf"
-                new_path = os.path.join(current_dir, new_file_name)
+                new_path = os.path.join(target_dir, new_file_name)
                 if not os.path.exists(new_path) or old_path.lower() == new_path.lower():
                     break
                 counter += 1
 
         try:
             log_step("Renaming file")
-            os.rename(old_path, new_path)
+            shutil.move(old_path, new_path)
             log_step_success("Renaming file", f"Renamed to: '{new_file_name}'")
             
             orig_base_name = os.path.splitext(file)[0]
@@ -756,10 +764,10 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
                     continue
                 rel_base, rel_ext = os.path.splitext(related_file)
                 if rel_base == orig_base_name:
-                    related_target = os.path.join(current_dir, f"{final_base_name}{rel_ext}")
+                    related_target = os.path.join(target_dir, f"{final_base_name}{rel_ext}")
                     try:
                         log_step(f"Renaming related file: {related_file}")
-                        os.rename(os.path.join(current_dir, related_file), related_target)
+                        shutil.move(os.path.join(current_dir, related_file), related_target)
                         log_step_success(f"Renaming related file: {related_file}", f"Renamed to {os.path.basename(related_target)}")
                     except Exception as e:
                         log_step_error(f"Renaming related file: {related_file}", str(e))

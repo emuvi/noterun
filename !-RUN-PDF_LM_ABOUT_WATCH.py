@@ -3,6 +3,7 @@ import sys
 import re
 import glob
 import time
+import shutil
 import traceback
 import PyPDF2
 from PyPDF2.errors import PdfReadError
@@ -402,57 +403,62 @@ def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str
 
 def mark_file_with_suffix(file: str, current_dir: str, suffix: str) -> None:
     """
-    Renames a file and its sidecars with a specific suffix to avoid infinite processing loops.
+    Renames a file and its sidecars with a specific suffix and moves them to '!- ERRORS' to avoid infinite processing loops.
     """
     func_name = "Mark File With Suffix"
-    print_step(func_name, f"Applying suffix '{suffix}' to '{file}'")
+    print_step(func_name, f"Applying suffix '{suffix}' and moving '{file}' to '!- ERRORS'")
     try:
         base_name, ext = os.path.splitext(file)
         error_name = f"{base_name} {suffix}{ext}"
+        errors_dir = os.path.join(current_dir, "!- ERRORS")
+        os.makedirs(errors_dir, exist_ok=True)
+        error_path = os.path.join(errors_dir, error_name)
 
         if not os.path.exists(file):
             raise FileNotFoundError(f"Original file missing: {file}")
 
-        os.rename(file, error_name)
-        print_success(func_name, f"Renamed main file to '{error_name}'")
+        shutil.move(file, error_path)
+        print_success(func_name, f"Moved main file to '{error_path}'")
 
         # Rename sidecar files
-        print_step(func_name, "Checking for sidecar files to rename...")
+        print_step(func_name, "Checking for sidecar files to rename and move...")
         sidecars_renamed = 0
         for related_file in os.listdir(current_dir):
             if related_file != error_name and related_file != file and os.path.splitext(related_file)[0] == base_name:
                 rel_ext = os.path.splitext(related_file)[1]
                 try:
-                    os.rename(related_file, f"{base_name} {suffix}{rel_ext}")
+                    rel_error_path = os.path.join(errors_dir, f"{base_name} {suffix}{rel_ext}")
+                    shutil.move(related_file, rel_error_path)
                     sidecars_renamed += 1
                 except Exception as inner_e:
                     print_error(
-                        func_name, f"Could not append suffix to sidecar '{related_file}': {inner_e}")
+                        func_name, f"Could not move sidecar '{related_file}': {inner_e}")
 
-        print_success(func_name, f"Renamed {sidecars_renamed} sidecar files.")
+        print_success(func_name, f"Renamed and moved {sidecars_renamed} sidecar files.")
     except FileNotFoundError as fnfe:
         print_error(func_name, str(fnfe))
     except Exception as e:
         print_error(
-            func_name, f"Could not append suffix {suffix} to file: {e}")
+            func_name, f"Could not append suffix {suffix} and move file: {e}")
 
 
 def rename_pdf_and_sidecars(current_dir: str, original_file: str, new_path: str) -> bool:
     """
-    Renames the main PDF file and any matching sidecar files (e.g. metadata).
+    Renames and moves the main PDF file and any matching sidecar files (e.g. metadata).
     """
     func_name = "Rename File and Sidecars"
     print_step(
-        func_name, f"Executing rename of '{original_file}' to '{os.path.basename(new_path)}'")
+        func_name, f"Executing rename of '{original_file}' to '{new_path}'")
     try:
         new_file_name = os.path.basename(new_path)
         final_new_base_name = os.path.splitext(new_file_name)[0]
         old_base_name = os.path.splitext(original_file)[0]
+        target_dir = os.path.dirname(new_path)
 
-        os.rename(original_file, new_path)
-        print_success(func_name, f"Main PDF renamed to: {new_file_name}")
+        shutil.move(os.path.join(current_dir, original_file), new_path)
+        print_success(func_name, f"Main PDF renamed and moved to: {new_file_name}")
 
-        print_step(func_name, "Renaming associated sidecar files...")
+        print_step(func_name, "Renaming and moving associated sidecar files...")
         sidecars_renamed = 0
         for related_file in os.listdir(current_dir):
             if related_file == original_file or related_file == new_file_name:
@@ -460,13 +466,13 @@ def rename_pdf_and_sidecars(current_dir: str, original_file: str, new_path: str)
             rel_base, rel_ext = os.path.splitext(related_file)
             if rel_base == old_base_name:
                 related_target = os.path.join(
-                    current_dir, f"{final_new_base_name}{rel_ext}")
+                    target_dir, f"{final_new_base_name}{rel_ext}")
                 try:
-                    os.rename(related_file, related_target)
+                    shutil.move(os.path.join(current_dir, related_file), related_target)
                     sidecars_renamed += 1
                 except Exception as e:
                     print_error(
-                        func_name, f"Error renaming sidecar '{related_file}': {e}")
+                        func_name, f"Error renaming/moving sidecar '{related_file}': {e}")
 
         print_success(
             func_name, f"Successfully renamed {sidecars_renamed} sidecar files.")
@@ -543,7 +549,8 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
         mark_file_with_suffix(file, current_dir, "(SUMMARY_FAILED)")
         return False
 
-    new_path = get_unique_new_path(current_dir, new_base_name, file)
+    target_dir = os.path.dirname(current_dir)
+    new_path = get_unique_new_path(target_dir, new_base_name, file)
     if not new_path:
         mark_file_with_suffix(file, current_dir, "(ERROR)")
         return False

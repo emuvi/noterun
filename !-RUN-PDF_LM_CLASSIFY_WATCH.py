@@ -282,18 +282,21 @@ def find_target_directory(parent_dir: str, current_dir: str, llm_response: str) 
 
 def rename_file_on_error(file_path: str, suffix: str, current_dir: str) -> None:
     """
-    Renames the file to prevent it from being endlessly processed.
+    Renames the file to prevent it from being endlessly processed and moves it to '!- ERRORS'.
     Also attempts to rename related files sharing the same basename.
     """
     func_name = "Rename On Error"
     print_step(
-        func_name, f"Applying '{suffix}' suffix to file to prevent loop...")
+        func_name, f"Applying '{suffix}' suffix and moving to '!- ERRORS' to prevent loop...")
     base_name, ext = os.path.splitext(file_path)
     error_name = f"{base_name} {suffix}{ext}"
+    errors_dir = os.path.join(current_dir, "!- ERRORS")
+    os.makedirs(errors_dir, exist_ok=True)
+    error_path = os.path.join(errors_dir, error_name)
 
     try:
-        os.rename(file_path, error_name)
-        print_success(func_name, f"Renamed main file to: {error_name}")
+        shutil.move(os.path.join(current_dir, file_path), error_path)
+        print_success(func_name, f"Renamed main file to: {error_name} and moved to '!- ERRORS'")
 
         # Rename related files
         for related_file in os.listdir(current_dir):
@@ -301,14 +304,14 @@ def rename_file_on_error(file_path: str, suffix: str, current_dir: str) -> None:
                 rel_ext = os.path.splitext(related_file)[1]
                 related_error_name = f"{base_name} {suffix}{rel_ext}"
                 try:
-                    os.rename(related_file, related_error_name)
+                    shutil.move(os.path.join(current_dir, related_file), os.path.join(errors_dir, related_error_name))
                     print_success(
-                        func_name, f"Renamed related file to: {related_error_name}")
+                        func_name, f"Renamed related file to: {related_error_name} and moved to '!- ERRORS'")
                 except Exception as e:
                     print_error(
-                        func_name, f"Failed to rename related file {related_file}: {e}")
+                        func_name, f"Failed to rename/move related file {related_file}: {e}")
     except Exception as e:
-        print_error(func_name, f"Failed to rename main file {file_path}: {e}")
+        print_error(func_name, f"Failed to rename/move main file {file_path}: {e}")
 
 
 def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> bool:
