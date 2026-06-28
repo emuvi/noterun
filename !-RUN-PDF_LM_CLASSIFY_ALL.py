@@ -67,24 +67,28 @@ def print_progress(current: int, total: int, prefix: str = '', suffix: str = '',
         print_error(f"Failed to print progress: {e}")
 
 
-def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
-    """Prints a visual box containing the summary of a cycle or session."""
-    box_width = 50
-    lines = [
-        "\n" + "╔" + "═" * (box_width - 2) + "╗",
-        "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
-        "╠" + "═" * (box_width - 2) + "╣",
-        "║" +
-        f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
-        "║" +
-        f" ✅ Successes          : {successes:<21}".ljust(box_width - 2) + "║",
-        "║" +
-        f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
-        "╚" + "═" * (box_width - 2) + "╝\n"
-    ]
-    for line in lines:
-        print(line)
-    event_chain.extend(lines)
+def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
+    """
+    Prints a visually clear box summarizing the cycle.
+    """
+    try:
+        box_width = 50
+        lines = [
+            "\n" + "╔" + "═" * (box_width - 2) + "╗",
+            "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
+            "╠" + "═" * (box_width - 2) + "╣",
+            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
+            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║",
+            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+            "╚" + "═" * (box_width - 2) + "╝\n"
+        ]
+        for line in lines:
+            print(line)
+        event_chain.extend(lines)
+    except Exception as e:
+        print_error(f"Failed to print summary box: {e}")
+
+
 
 # --- Setup & API Functions ---
 
@@ -474,10 +478,6 @@ def process_all_pdfs() -> None:
                     error_msg = "Failed to extract text or PDF is empty."
                     handle_file_error(file, current_dir, error_msg)
                     fail_count += 1
-                    print_summary_box("Cycle Summary", total,
-                                      success_count, fail_count)
-                    print_summary_box("Overall Session Summary",
-                                      total, success_count, fail_count)
                 else:
                     # 2. LLM Classification
                     start_time = time.time()
@@ -490,10 +490,6 @@ def process_all_pdfs() -> None:
                         error_msg = "LLM returned empty or unparseable response."
                         handle_file_error(file, current_dir, error_msg)
                         fail_count += 1
-                        print_summary_box(
-                            "Cycle Summary", total, success_count, fail_count)
-                        print_summary_box(
-                            "Overall Session Summary", total, success_count, fail_count)
                     else:
                         # 3. Directory Matching
                         target_dir = find_target_directory(
@@ -516,27 +512,15 @@ def process_all_pdfs() -> None:
                             error_msg = "No suitable target directory found for file."
                             handle_file_error(file, current_dir, error_msg)
                             fail_count += 1
-                            print_summary_box(
-                                "Cycle Summary", total, success_count, fail_count)
-                            print_summary_box(
-                                "Overall Session Summary", total, success_count, fail_count)
 
             except ConnectionError as ce:
                 print_error(f"API Error: {ce}. Skipping to next file.")
                 fail_count += 1
-                print_summary_box("Cycle Summary", total,
-                                  success_count, fail_count)
-                print_summary_box("Overall Session Summary",
-                                  total, success_count, fail_count)
             except Exception as e:
                 error_msg = f"Unexpected error processing '{file}': {e}\n{traceback.format_exc()}"
                 print_error(error_msg)
                 handle_file_error(file, current_dir, error_msg)
                 fail_count += 1
-                print_summary_box("Cycle Summary", total,
-                                  success_count, fail_count)
-                print_summary_box("Overall Session Summary",
-                                  total, success_count, fail_count)
 
             print_progress(
                 index + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)

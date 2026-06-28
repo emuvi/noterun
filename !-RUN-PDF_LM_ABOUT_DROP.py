@@ -111,6 +111,8 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         print_error(f"Failed to print summary box: {e}")
 
 
+
+
 def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     """
     Moves the file to '!-ERRORS' to prevent it from being endlessly processed.
@@ -731,10 +733,6 @@ class DropZone(QLabel):
                 print_error(error_msg)
                 handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
                 fail_count += 1
-                print_summary_box("Cycle Summary", total,
-                                  success_count, fail_count)
-                print_summary_box("Overall Session Summary",
-                                  total, success_count, fail_count)
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to rename the PDF based on summary.")
@@ -749,10 +747,6 @@ class DropZone(QLabel):
                     print_error(error_msg)
                     handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
                     fail_count += 1
-                    print_summary_box("Cycle Summary", total,
-                                      success_count, fail_count)
-                    print_summary_box("Overall Session Summary",
-                                      total, success_count, fail_count)
 
             print_progress(1, total, prefix='Dropped File Progress',
                            suffix='Complete', length=30)

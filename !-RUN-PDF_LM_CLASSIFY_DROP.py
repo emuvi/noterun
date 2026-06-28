@@ -94,13 +94,9 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
             "\n" + "╔" + "═" * (box_width - 2) + "╗",
             "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
             "╠" + "═" * (box_width - 2) + "╣",
-            "║" +
-            f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
-            "║" +
-            f" ✅ Successes          : {success:<21}".ljust(
-                box_width - 2) + "║",
-            "║" +
-            f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
+            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║",
+            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
             "╚" + "═" * (box_width - 2) + "╝\n"
         ]
         for line in lines:
@@ -108,6 +104,8 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         event_chain.extend(lines)
     except Exception as e:
         print_error(f"Failed to print summary box: {e}")
+
+
 
 
 _cached_prompt = None
@@ -603,10 +601,6 @@ class DropZone(QLabel):
                 handle_file_error(os.path.basename(file_path),
                                   os.path.dirname(file_path), error_msg)
                 fail_count += 1
-                print_summary_box("Cycle Summary", total,
-                                  success_count, fail_count)
-                print_summary_box("Overall Session Summary",
-                                  total, success_count, fail_count)
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to classify and move the PDF.")
@@ -622,10 +616,6 @@ class DropZone(QLabel):
                     handle_file_error(os.path.basename(
                         file_path), os.path.dirname(file_path), error_msg)
                     fail_count += 1
-                    print_summary_box("Cycle Summary", total,
-                                      success_count, fail_count)
-                    print_summary_box("Overall Session Summary",
-                                      total, success_count, fail_count)
 
             print_progress(1, total, prefix='Dropped File Progress',
                            suffix='Complete', length=30)

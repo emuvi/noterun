@@ -54,21 +54,28 @@ def print_error(action: str, message: str) -> None:
     event_chain.append(msg)
 
 
-def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
-    """Prints a visual box containing the summary of a cycle."""
-    box_width = 50
-    lines = [
-        "\n" + "╔" + "═" * (box_width - 2) + "╗",
-        "║" + f"{title}".center(box_width - 2) + "║",
-        "╠" + "═" * (box_width - 2) + "╣",
-        "║" + f"Total Processed: {total}".ljust(box_width - 2) + "║",
-        "║" + f"Successes:       {successes}".ljust(box_width - 2) + "║",
-        "║" + f"Failures:        {fails}".ljust(box_width - 2) + "║",
-        "╚" + "═" * (box_width - 2) + "╝\n"
-    ]
-    for line in lines:
-        print(line)
-    event_chain.extend(lines)
+def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
+    """
+    Prints a visually clear box summarizing the cycle.
+    """
+    try:
+        box_width = 50
+        lines = [
+            "\n" + "╔" + "═" * (box_width - 2) + "╗",
+            "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
+            "╠" + "═" * (box_width - 2) + "╣",
+            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
+            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║",
+            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+            "╚" + "═" * (box_width - 2) + "╝\n"
+        ]
+        for line in lines:
+            print(line)
+        event_chain.extend(lines)
+    except Exception as e:
+        print_error("Print Summary Box", f"Failed to print summary box: {e}")
+
+
 
 # --- NLP Functions ---
 
@@ -662,10 +669,6 @@ def main() -> None:
                         else:
                             cycle_fails += 1
                             total_session_fails += 1
-                            print_summary_box(
-                                "Cycle Summary", cycle_total, cycle_success, cycle_fails)
-                            print_summary_box("Overall Session Summary", total_session_success +
-                                              total_session_fails, total_session_success, total_session_fails)
 
                     except Exception as e:
                         error_msg = f"Unexpected error while processing file '{file}': {e}\n{traceback.format_exc()}"
@@ -673,10 +676,6 @@ def main() -> None:
                         handle_file_error(file, current_dir, error_msg)
                         cycle_fails += 1
                         total_session_fails += 1
-                        print_summary_box(
-                            "Cycle Summary", cycle_total, cycle_success, cycle_fails)
-                        print_summary_box("Overall Session Summary", total_session_success +
-                                          total_session_fails, total_session_success, total_session_fails)
 
                 # End of file loop - 100% progress
                 print(
@@ -687,13 +686,13 @@ def main() -> None:
                     print_summary_box(
                         title=f"Cycle Summary",
                         total=cycle_total,
-                        successes=cycle_success,
+                        success=cycle_success,
                         fails=cycle_fails
                     )
                     print_summary_box(
                         title=f"Overall Session Summary",
                         total=total_session_success + total_session_fails,
-                        successes=total_session_success,
+                        success=total_session_success,
                         fails=total_session_fails
                     )
                     print(
@@ -712,7 +711,7 @@ def main() -> None:
         print_summary_box(
             title="Final Overall Session Summary",
             total=total_session_success + total_session_fails,
-            successes=total_session_success,
+            success=total_session_success,
             fails=total_session_fails
         )
 

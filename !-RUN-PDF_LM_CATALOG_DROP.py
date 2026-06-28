@@ -86,7 +86,9 @@ def print_progress(current: int, total: int, prefix: str = '', suffix: str = '',
 
 
 def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
-    """Prints a visually clear box summarizing the cycle."""
+    """
+    Prints a visually clear box summarizing the cycle.
+    """
     try:
         box_width = 50
         lines = [
@@ -103,6 +105,8 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         event_chain.extend(lines)
     except Exception as e:
         print_error(f"Failed to print summary box: {e}")
+
+
 
 
 FIELD_PROMPTS: Dict[str, str] = {
@@ -877,10 +881,6 @@ class DropZone(QLabel):
                 print_error(error_msg)
                 handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
                 fail_count += 1
-                print_summary_box("Cycle Summary", total,
-                                  success_count, fail_count)
-                print_summary_box("Overall Session Summary",
-                                  total, success_count, fail_count)
             else:
                 print_success(f"Extracted {len(text)} characters of text.")
                 print_step("Proceeding to generate catalog filename.")
@@ -953,10 +953,6 @@ class DropZone(QLabel):
                     print_error(error_msg)
                     handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
                     fail_count += 1
-                    print_summary_box("Cycle Summary", total,
-                                      success_count, fail_count)
-                    print_summary_box("Overall Session Summary",
-                                      total, success_count, fail_count)
                 else:
                     current_dir = os.path.dirname(file_path)
                     new_path = get_unique_new_path(
@@ -967,10 +963,6 @@ class DropZone(QLabel):
                         print_error(error_msg)
                         handle_file_error(os.path.basename(file_path), os.path.dirname(file_path), error_msg)
                         fail_count += 1
-                        print_summary_box(
-                            "Cycle Summary", total, success_count, fail_count)
-                        print_summary_box(
-                            "Overall Session Summary", total, success_count, fail_count)
                     else:
                         old_base_name = os.path.splitext(
                             os.path.basename(file_path))[0]

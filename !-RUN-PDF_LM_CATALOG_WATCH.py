@@ -57,21 +57,28 @@ def log_step_error(step_name: str, error_msg: str) -> None:
     event_chain.append(msg)
 
 
-def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
-    """Prints a visual box containing the summary of a cycle or session."""
-    box_width = 50
-    lines = [
-        "\n" + "╔" + "═" * (box_width - 2) + "╗",
-        "║" + f"{title}".center(box_width - 2) + "║",
-        "╠" + "═" * (box_width - 2) + "╣",
-        "║" + f"Total Processed: {total}".ljust(box_width - 2) + "║",
-        "║" + f"Successes:       {successes}".ljust(box_width - 2) + "║",
-        "║" + f"Failures:        {fails}".ljust(box_width - 2) + "║",
-        "╚" + "═" * (box_width - 2) + "╝\n"
-    ]
-    for line in lines:
-        print(line)
-    event_chain.extend(lines)
+def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
+    """
+    Prints a visually clear box summarizing the cycle.
+    """
+    try:
+        box_width = 50
+        lines = [
+            "\n" + "╔" + "═" * (box_width - 2) + "╗",
+            "║" + f" 📊 SUMMARY: {title} ".center(box_width - 2) + "║",
+            "╠" + "═" * (box_width - 2) + "╣",
+            "║" + f" Total Items Processed : {total:<21}".ljust(box_width - 2) + "║",
+            "║" + f" ✅ Successes          : {success:<21}".ljust(box_width - 2) + "║",
+            "║" + f" 🔴 Failures           : {fails:<21}".ljust(box_width - 2) + "║",
+            "╚" + "═" * (box_width - 2) + "╝\n"
+        ]
+        for line in lines:
+            print(line)
+        event_chain.extend(lines)
+    except Exception as e:
+        log_step_error("Print Summary Box", f"Failed to print summary box: {e}")
+
+
 
 
 def load_spacy_model(lang_code: str) -> Any:
@@ -901,13 +908,13 @@ def main_loop() -> None:
                 print_summary_box(
                     title=f"Cycle Summary",
                     total=processed_files + failed_files,
-                    successes=processed_files,
+                    success=processed_files,
                     fails=failed_files
                 )
                 print_summary_box(
                     title=f"Overall Session Summary",
                     total=total_processed_files + total_failed_files,
-                    successes=total_processed_files,
+                    success=total_processed_files,
                     fails=total_failed_files
                 )
 

@@ -107,6 +107,8 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         print_error(f"Failed to print summary box: {e}")
 
 
+
+
 def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     """
     Moves the file to '!-ERRORS' to prevent it from being endlessly processed.
@@ -684,10 +686,6 @@ def process_all_pdfs() -> None:
                     print_error(error_msg)
                     handle_file_error(filename, current_dir, error_msg)
                     fail_count += 1
-                    print_summary_box("Cycle Summary", total,
-                                      success_count, fail_count)
-                    print_summary_box("Overall Session Summary",
-                                      total, success_count, fail_count)
                 else:
                     print_success(
                         f"Extracted {len(text)} characters of text from '{filename}'.")
@@ -701,20 +699,12 @@ def process_all_pdfs() -> None:
                         print_error(error_msg)
                         handle_file_error(filename, current_dir, error_msg)
                         fail_count += 1
-                        print_summary_box(
-                            "Cycle Summary", total, success_count, fail_count)
-                        print_summary_box(
-                            "Overall Session Summary", total, success_count, fail_count)
 
             except Exception as file_err:
                 error_msg = f"Unexpected error processing file '{filename}': {file_err}\n{traceback.format_exc()}"
                 print_error(error_msg)
                 handle_file_error(filename, current_dir, error_msg)
                 fail_count += 1
-                print_summary_box("Cycle Summary", total,
-                                  success_count, fail_count)
-                print_summary_box("Overall Session Summary",
-                                  total, success_count, fail_count)
 
             print_progress(
                 idx + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
