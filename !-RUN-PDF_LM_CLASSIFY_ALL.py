@@ -449,11 +449,13 @@ def process_all_pdfs() -> None:
             print_progress(idx + 1, total, prefix='Batch Processing Progress', suffix='Complete', length=30)
 
         print_success("Batch processing cycle complete.")
-        print_summary_box("Batch PDF Classification Cycle", total, success_count, fail_count)
+        print_summary_box("Cycle Summary", total, success_count, fail_count)
+        print_summary_box("Overall Session Summary", total, success_count, fail_count)
 
     except Exception as e:
         print_error(f"Critical error during batch processing: {e}")
-        print_summary_box("Batch PDF Classification Cycle (Interrupted)", total, success_count, fail_count)
+        print_summary_box("Cycle Summary (Interrupted)", total, success_count, fail_count)
+        print_summary_box("Overall Session Summary (Interrupted)", total, success_count, fail_count)
 
 
 def main() -> None:

@@ -38,24 +38,16 @@ def log_step_error(step_name: str, error_msg: str) -> None:
     """Logs an error occurring in a specific step."""
     print(f"  [X] {step_name}... [ERROR: {error_msg}]")
 
-def print_visual_summary(processed: int, failed: int, total_processed: int, total_failed: int) -> None:
-    """Prints a clear visual representation of the summary at the end of a cycle."""
-    try:
-        log_step("Printing visual summary")
-        print("\n" + "="*80)
-        print("████████████████████ CYCLE SUMMARY ████████████████████")
-        print("="*80)
-        print(f"  [ CURRENT CYCLE ]")
-        print(f"  ✓ SUCCESS : {processed} file(s)")
-        print(f"  X FAILED  : {failed} file(s)")
-        print("-" * 80)
-        print(f"  [ OVERALL SESSION ]")
-        print(f"  ✓ TOTAL SUCCESS : {total_processed} file(s)")
-        print(f"  X TOTAL FAILED  : {total_failed} file(s)")
-        print("="*80 + "\n")
-        log_step_success("Printing visual summary")
-    except Exception as e:
-        log_step_error("Printing visual summary", str(e))
+def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
+    """Prints a visual box containing the summary of a cycle or session."""
+    box_width = 50
+    print("\n" + "╔" + "═" * (box_width - 2) + "╗")
+    print("║" + f"{title}".center(box_width - 2) + "║")
+    print("╠" + "═" * (box_width - 2) + "╣")
+    print("║" + f"Total Processed: {total}".ljust(box_width - 2) + "║")
+    print("║" + f"Successes:       {successes}".ljust(box_width - 2) + "║")
+    print("║" + f"Failures:        {fails}".ljust(box_width - 2) + "║")
+    print("╚" + "═" * (box_width - 2) + "╝\n")
 
 def load_spacy_model(lang_code: str) -> Any:
     """Loads spacy and the appropriate NLP model based on language."""
@@ -827,11 +819,14 @@ def process_all_pdfs() -> None:
                 log_step_error(f"Processing file {file}", str(e))
                 failed_files += 1
 
-        print_visual_summary(processed_files, failed_files, processed_files, failed_files)
+        print_summary_box("Cycle Summary", total_files_in_cycle, processed_files, failed_files)
+        print_summary_box("Overall Session Summary", total_files_in_cycle, processed_files, failed_files)
 
     except Exception as e:
         log_message(f"Critical error in batch execution loop: {e}")
         traceback.print_exc()
+        # Since total_files_in_cycle might not be defined if error occurs early, we handle it if needed
+        # But we'll just log it as in original
 
 
 def main() -> None:

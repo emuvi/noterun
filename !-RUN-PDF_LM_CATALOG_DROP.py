@@ -892,11 +892,14 @@ class DropZone(QLabel):
                             print_error("Primary PDF renaming failed. Associated files will not be renamed.")
 
             print_progress(1, total, prefix='Dropped File Progress', suffix='Complete', length=30)
-            print_summary_box("Dropped File Processing Cycle", total, success_count, fail_count)
+            print_success("Batch processing cycle complete.")
+            print_summary_box("Cycle Summary", total, success_count, fail_count)
+            print_summary_box("Overall Session Summary", total, success_count, fail_count)
 
         except Exception as e:
             print_error(f"Critical error processing dropped file: {e}")
-            print_summary_box("Dropped File Processing Cycle (Interrupted)", total, success_count, fail_count)
+            print_summary_box("Cycle Summary (Interrupted)", total, success_count, fail_count)
+            print_summary_box("Overall Session Summary (Interrupted)", total, success_count, fail_count)
 
 
 class MainWindow(QMainWindow):
