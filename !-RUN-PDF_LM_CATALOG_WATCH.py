@@ -45,24 +45,16 @@ def log_step_error(step_name: str, error_msg: str) -> None:
     print(f"  [X] {step_name}... [ERROR: {error_msg}]")
 
 
-def print_visual_summary(processed: int, failed: int, total_processed: int, total_failed: int) -> None:
-    """Prints a clear visual representation of the summary at the end of a cycle."""
-    try:
-        log_step("Printing visual summary")
-        print("\n" + "="*80)
-        print("████████████████████ CYCLE SUMMARY ████████████████████")
-        print("="*80)
-        print(f"  [ CURRENT CYCLE ]")
-        print(f"  ✓ SUCCESS : {processed} file(s)")
-        print(f"  X FAILED  : {failed} file(s)")
-        print("-" * 80)
-        print(f"  [ OVERALL SESSION ]")
-        print(f"  ✓ TOTAL SUCCESS : {total_processed} file(s)")
-        print(f"  X TOTAL FAILED  : {total_failed} file(s)")
-        print("="*80 + "\n")
-        log_step_success("Printing visual summary")
-    except Exception as e:
-        log_step_error("Printing visual summary", str(e))
+def print_summary_box(title: str, total: int, successes: int, fails: int) -> None:
+    """Prints a visual box containing the summary of a cycle or session."""
+    box_width = 50
+    print("\n" + "╔" + "═" * (box_width - 2) + "╗")
+    print("║" + f"{title}".center(box_width - 2) + "║")
+    print("╠" + "═" * (box_width - 2) + "╣")
+    print("║" + f"Total Processed: {total}".ljust(box_width - 2) + "║")
+    print("║" + f"Successes:       {successes}".ljust(box_width - 2) + "║")
+    print("║" + f"Failures:        {fails}".ljust(box_width - 2) + "║")
+    print("╚" + "═" * (box_width - 2) + "╝\n")
 
 
 def load_spacy_model(lang_code: str) -> Any:
@@ -884,9 +876,10 @@ def main_loop() -> None:
             files_to_process = get_files_to_process(current_dir)
 
             if not files_to_process:
-                print(
-                    f"\r[{get_current_time()}] ⏳ Waiting for new PDF files... (Checking every 5s)", end="", flush=True)
-                waiting = True
+                if not waiting:
+                    print(
+                        f"\r[{get_current_time()}] ⏳ Waiting for new PDF files... (Checking every 5s)", end="", flush=True)
+                    waiting = True
                 time.sleep(5)
                 continue
 
@@ -937,8 +930,18 @@ def main_loop() -> None:
             if processed_files > 0 or failed_files > 0:
                 total_processed_files += processed_files
                 total_failed_files += failed_files
-                print_visual_summary(
-                    processed_files, failed_files, total_processed_files, total_failed_files)
+                print_summary_box(
+                    title=f"Cycle Summary",
+                    total=processed_files + failed_files,
+                    successes=processed_files,
+                    fails=failed_files
+                )
+                print_summary_box(
+                    title=f"Overall Session Summary",
+                    total=total_processed_files + total_failed_files,
+                    successes=total_processed_files,
+                    fails=total_failed_files
+                )
 
             time.sleep(2)
 

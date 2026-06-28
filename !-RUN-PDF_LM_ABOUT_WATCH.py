@@ -600,9 +600,10 @@ def main() -> None:
                 files_to_process = get_files_to_process()
 
                 if not files_to_process:
-                    print(
-                        f"\r[{get_current_time()}] ⏳ Waiting for new PDF files... (Checking every 5s)", end="", flush=True)
-                    waiting = True
+                    if not waiting:
+                        print(
+                            f"\r[{get_current_time()}] ⏳ Waiting for new PDF files... (Checking every 5s)", end="", flush=True)
+                        waiting = True
                     time.sleep(5)
                     continue
 
@@ -650,9 +651,17 @@ def main() -> None:
                 # 3. Print summaries
                 if cycle_total > 0:
                     print_summary_box(
-                        "CYCLE SUMMARY", cycle_total, cycle_success, cycle_fails)
-                    print_summary_box("OVERALL SESSION SUMMARY", total_session_success +
-                                      total_session_fails, total_session_success, total_session_fails)
+                        title=f"Cycle Summary",
+                        total=cycle_total,
+                        successes=cycle_success,
+                        fails=cycle_fails
+                    )
+                    print_summary_box(
+                        title=f"Overall Session Summary",
+                        total=total_session_success + total_session_fails,
+                        successes=total_session_success,
+                        fails=total_session_fails
+                    )
                     print(
                         f"[{get_current_time()}] Cycle completed. Pausing before next check...")
 
@@ -666,8 +675,12 @@ def main() -> None:
 
     except KeyboardInterrupt:
         print(f"\n[{get_current_time()}] Continuous monitoring stopped by user.")
-        print_summary_box("FINAL OVERALL SESSION SUMMARY", total_session_success +
-                          total_session_fails, total_session_success, total_session_fails)
+        print_summary_box(
+            title="Final Overall Session Summary",
+            total=total_session_success + total_session_fails,
+            successes=total_session_success,
+            fails=total_session_fails
+        )
 
 
 if __name__ == "__main__":
