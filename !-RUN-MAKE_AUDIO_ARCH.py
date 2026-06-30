@@ -15,16 +15,16 @@ def main():
     print("=" * 50)
     print("   Noterun Audio Archive Converter Initialized")
     print("=" * 50)
-    
+
     # Common audio file extensions
-    audio_extensions = {'.mp3', '.wav', '.flac', '.ogg', '.aac', '.wma', '.m4a'}
-    
+    audio_extensions = {'.mp3', '.wav', '.flac', '.ogg', '.aac', '.wma'}
+
     current_dir = Path.cwd()
-    
+
     print(f"[*] Scanning directory: {current_dir} for audio files...")
-    
+
     files_to_convert = []
-    
+
     try:
         for file_path in current_dir.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in audio_extensions:
@@ -36,7 +36,8 @@ def main():
         print(f"[-] File System Error while scanning directory: {e}")
         return 1
     except Exception as e:
-        print(f"[-] An unexpected error occurred while scanning directory: {e}")
+        print(
+            f"[-] An unexpected error occurred while scanning directory: {e}")
         return 1
 
     if not files_to_convert:
@@ -45,15 +46,15 @@ def main():
 
     print(f"[+] Found {len(files_to_convert)} audio file(s) to convert.")
     print("-" * 50)
-    
+
     success_count = 0
     failure_count = 0
-    
+
     for file_path in files_to_convert:
-        output_file = file_path.with_name(f"{file_path.stem} (arch).m4a")
-        
+        output_file = file_path.with_name(f"{file_path.stem}.m4a")
+
         print(f"[*] Converting: '{file_path.name}' -> '{output_file.name}'...")
-        
+
         # FFmpeg parameters for extreme voice compression:
         # -c:a aac : use native AAC encoder (since it's widely supported for m4a)
         # -ac 1 : downmix to mono
@@ -70,29 +71,33 @@ def main():
             '-y',
             str(output_file)
         ]
-        
+
         try:
             # Capture output to avoid flooding the console, but keep it for errors
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd, check=True, capture_output=True, text=True)
             print(f"[+] Successfully converted '{output_file.name}'.")
             success_count += 1
         except subprocess.CalledProcessError as e:
-            print(f"[-] Error converting '{file_path.name}': Subprocess failed with exit code {e.returncode}")
+            print(
+                f"[-] Error converting '{file_path.name}': Subprocess failed with exit code {e.returncode}")
             if e.stderr:
                 print(f"    FFmpeg stderr: {e.stderr.strip()}")
             failure_count += 1
         except FileNotFoundError:
             print("[-] CRITICAL ERROR: ffmpeg was not found.")
-            print("[-] Please make sure ffmpeg is installed and added to your system's PATH.")
+            print(
+                "[-] Please make sure ffmpeg is installed and added to your system's PATH.")
             return 1
         except Exception as e:
-            print(f"[-] An unexpected error occurred while converting '{file_path.name}': {e}")
+            print(
+                f"[-] An unexpected error occurred while converting '{file_path.name}': {e}")
             failure_count += 1
 
     print("-" * 50)
     print(f"[*] Conversion process completed.")
     print(f"[+] Successful conversions: {success_count}")
-    
+
     if failure_count > 0:
         print(f"[-] Failed conversions: {failure_count}")
         return 1
