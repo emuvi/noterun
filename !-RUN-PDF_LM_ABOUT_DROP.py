@@ -236,29 +236,29 @@ def abbreviate_words(text: str, nlp_model: Any, target_pos: List[str], preserve_
 
 
 def apply_abbreviation_phases(summary: str, nlp_model: Any) -> str:
-    """Applies progressive abbreviation rules to the summary if it exceeds 180 chars."""
-    if len(summary) <= 180:
+    """Applies progressive abbreviation rules to the summary if it exceeds 100 chars."""
+    if len(summary) <= 100:
         return summary
 
     print_step(
-        "[Apply Abbreviation Phases] Summary > 180 chars. Applying NLP abbreviation phases.")
+        "[Apply Abbreviation Phases] Summary > 100 chars. Applying NLP abbreviation phases.")
 
     # Phase 1: Abbreviate Adverbs (ADV)
     adv_pos = ["ADV"]
     summary = abbreviate_words(summary, nlp_model, adv_pos)
-    if len(summary) <= 180:
+    if len(summary) <= 100:
         return summary
 
     # Phase 2: Abbreviate Adjectives and Verbs (ADJ, VERB)
     adj_verb_pos = ["ADJ", "VERB"]
     summary = abbreviate_words(summary, nlp_model, adj_verb_pos)
-    if len(summary) <= 180:
+    if len(summary) <= 100:
         return summary
 
     # Phase 3: Abbreviate Nouns and Proper Nouns (NOUN, PROPN)
     noun_pos = ["NOUN", "PROPN"]
     summary = abbreviate_words(summary, nlp_model, noun_pos)
-    if len(summary) <= 180:
+    if len(summary) <= 100:
         return summary
 
     # Phase 4: Abbreviate all
@@ -381,7 +381,7 @@ def build_summary_prompt(text: str) -> str:
         print_step("Constructing final prompt string.")
         prompt = (
             "Based on the following text extracted from a PDF, tell me what it is about "
-            "in a maximum of 180 characters. Be concise and direct, providing only the summary "
+            "in a maximum of 100 characters. Be concise and direct, providing only the summary "
             "without conversational filler. Do not use quotes or special characters that "
             "are invalid in filenames. Respond in the exact same language as the provided text, "
             "and ensure perfect spell checking on the language of the document.\n\n"
@@ -441,9 +441,9 @@ def sanitize_filename(summary: str) -> Optional[str]:
                 summary = summary[:-3]
         summary = summary.strip()
 
-        print_step("Enforcing the 180 character limit.")
-        if len(summary) > 180:
-            summary = summary[:180].strip()
+        print_step("Enforcing the 100 character limit.")
+        if len(summary) > 100:
+            summary = summary[:100].strip()
 
         print_step("Replacing invalid characters with underscores.")
         new_base_name = re.sub(r'[\\/*?:"<>|\n\r\t]', "_", summary)
