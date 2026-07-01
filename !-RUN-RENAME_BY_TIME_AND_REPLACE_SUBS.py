@@ -53,7 +53,7 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
                Returns (None, filename, None) if parsing fails.
     """
     formats = [
-        "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
+        "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
         "%Y-%m-%d %H:%M:%S", "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d",
         "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
         "%Y%m%d_%H%M%S", "%Y%m%d"
@@ -94,7 +94,7 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
         tuple: (new_name, skip_reason, replacements_made). The newly generated formatted filename, or None if no change is needed/possible.
     """
     dt, rest_of_name, fmt = parse_date_prefix(filename)
-    target_fmt = "%Y.%m.%d_%H.%M.%S"
+    target_fmt = "%Y.%m.%d-%H.%M"
 
     if dt:
         # If the recognized format lacks hour data, inject it from the file's metadata

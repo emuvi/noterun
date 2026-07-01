@@ -31,7 +31,7 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
     Attempts to parse date/time prefix from the filename based on known formats.
     """
     formats = [
-        "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
+        "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
         "%Y-%m-%d %H:%M:%S", "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d",
         "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
         "%Y%m%d_%H%M%S", "%Y%m%d"
@@ -63,7 +63,7 @@ def is_already_prefixed_time(filename: str) -> bool:
     """
     Checks if the filename is already prefixed with a time format, regardless of the prefix string.
     """
-    pattern = r"^\[ .*? \] - \d{4}\.\d{2}\.\d{2}_\d{2}\.\d{2}\.\d{2} - "
+    pattern = r"^\[ .*? \] - \d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2} - "
     return bool(re.match(pattern, filename))
 
 def generate_new_filename(filename: str, filepath: str, user_prefix: str) -> Tuple[Optional[str], Optional[str]]:
@@ -81,7 +81,7 @@ def generate_new_filename(filename: str, filepath: str, user_prefix: str) -> Tup
         name_to_parse = filename
 
     dt, rest_of_name, fmt = parse_date_prefix(name_to_parse)
-    target_fmt = "%Y.%m.%d_%H.%M.%S"
+    target_fmt = "%Y.%m.%d-%H.%M"
 
     if dt:
         # If the recognized format lacks hour data, inject it from the file's metadata
