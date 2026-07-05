@@ -448,7 +448,7 @@ def assemble_filename(author: str, series: str, volume: str, title: str, subtitl
             return " ".join(parts).strip()
 
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "No abbreviations needed")
             return name
 
@@ -456,19 +456,19 @@ def assemble_filename(author: str, series: str, volume: str, title: str, subtitl
         adv_pos = ["ADV"]
         subtitle = abbreviate_words(subtitle, nlp_model, adv_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 1")
             return name
 
         title = abbreviate_words(title, nlp_model, adv_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 1")
             return name
 
         series = abbreviate_words(series, nlp_model, adv_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 1")
             return name
 
@@ -476,19 +476,19 @@ def assemble_filename(author: str, series: str, volume: str, title: str, subtitl
         adj_verb_pos = ["ADJ", "VERB"]
         subtitle = abbreviate_words(subtitle, nlp_model, adj_verb_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 2")
             return name
 
         title = abbreviate_words(title, nlp_model, adj_verb_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 2")
             return name
 
         series = abbreviate_words(series, nlp_model, adj_verb_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 2")
             return name
 
@@ -496,19 +496,19 @@ def assemble_filename(author: str, series: str, volume: str, title: str, subtitl
         noun_pos = ["NOUN", "PROPN"]
         subtitle = abbreviate_words(subtitle, nlp_model, noun_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 3")
             return name
 
         title = abbreviate_words(title, nlp_model, noun_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 3")
             return name
 
         series = abbreviate_words(series, nlp_model, noun_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 3")
             return name
 
@@ -516,19 +516,19 @@ def assemble_filename(author: str, series: str, volume: str, title: str, subtitl
         all_pos = ["ADV", "ADJ", "VERB", "NOUN", "PROPN"]
         edition = abbreviate_words(edition, nlp_model, all_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 4")
             return name
 
         volume = abbreviate_words(volume, nlp_model, all_pos)
         name = build_name(series, volume, title, subtitle, edition)
-        if len(name) <= 240:
+        if len(name) <= 180:
             log_step_success("Assembling filename", "Abbreviated phase 4")
             return name
 
-        # Phase 5: Force truncate characters if still > 240
-        if len(name) > 240:
-            name = name[:240].strip()
+        # Phase 5: Force truncate characters if still > 180
+        if len(name) > 180:
+            name = name[:180].strip()
         log_step_success("Assembling filename", "Forced truncation")
         return name
     except Exception as e:
