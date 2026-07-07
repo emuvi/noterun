@@ -130,7 +130,7 @@ Rules: Do not include the main title or publisher name. Return EMPTY if the docu
 Rules: Return the specific identifier (e.g., 'Vol. 2', 'Issue 4'). Ignore dates unless they act as the primary identifier. Return EMPTY if none.""",
 
     "Title": """Extract the main title. 
-Rules: Exclude the subtitle, author, and labels like 'Title:'. Return EMPTY if none found.""",
+Rules: Exclude the subtitle, author, and labels like 'Title:'. If a title is not found, you must make a title as a summary with up to 100 characters of the content of the document.""",
 
     "Subtitle": """Extract the secondary/explanatory subtitle. 
 Rules: Exclude labels like 'Subtitle:'. Return EMPTY if no clear subtitle exists.""",
@@ -774,7 +774,6 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
                     f"Error processing potential associated file '{f}': {file_err}")
                 fail_count += 1
 
-
         print_success("Completed scanning and renaming associated files.")
         if success_count > 0 or fail_count > 0:
             print_summary_box("Associated Files Renaming",
@@ -1028,11 +1027,11 @@ class DropZone(QLabel):
             print_error(error_msg)
             handle_file_error(os.path.basename(file_path),
                               os.path.dirname(file_path), error_msg)
-            
+
             cycle_fail = 1
             self.session_fail_count += cycle_fail
             session_total = self.session_success_count + self.session_fail_count
-            
+
             print_summary_box("Cycle Summary (Interrupted)",
                               1, cycle_success, cycle_fail)
             print_summary_box(

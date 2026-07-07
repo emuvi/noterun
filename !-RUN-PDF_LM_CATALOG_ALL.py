@@ -99,8 +99,6 @@ def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
         log_step_error("Summary Box", f"Failed to print summary box: {e}")
 
 
-
-
 def load_spacy_model(lang_code: str) -> Any:
     """Loads spacy and the appropriate NLP model based on language."""
     spacy_models_map: Dict[str, str] = {
@@ -167,7 +165,7 @@ Rules: Do not include the main title or publisher name. Return EMPTY if the docu
 Rules: Return the specific identifier (e.g., 'Vol. 2', 'Issue 4'). Ignore dates unless they act as the primary identifier. Return EMPTY if none.""",
 
     "Title": """Extract the main title. 
-Rules: Exclude the subtitle, author, and labels like 'Title:'. Return EMPTY if none found.""",
+Rules: Exclude the subtitle, author, and labels like 'Title:'. If a title is not found, you must make a title as a summary with up to 100 characters of the content of the document.""",
 
     "Subtitle": """Extract the secondary/explanatory subtitle. 
 Rules: Exclude labels like 'Subtitle:'. Return EMPTY if no clear subtitle exists.""",
@@ -654,11 +652,11 @@ def handle_unreadable_file(file: str, current_dir: str, error_log: str) -> None:
         shutil.move(os.path.join(current_dir, file),
                     os.path.join(errors_dir, file))
         log_message(f"[{file}] -> Moved to '!-ERRORS' to prevent looping.")
-        
+
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
-            
+
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
@@ -683,11 +681,11 @@ def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
                     os.path.join(errors_dir, file))
         log_message(
             f"[{file}] -> Moved to '!-ERRORS' to prevent looping on this file.")
-            
+
         log_file_path = os.path.join(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
-            
+
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
@@ -702,25 +700,31 @@ def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
 
 def rename_file(old_path: str, new_path: str) -> bool:
     """Renames a file from old_path to new_path."""
-    log_step(f"Attempting to rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
+    log_step(
+        f"Attempting to rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
     try:
         os.rename(old_path, new_path)
-        log_step_success("Renaming file", f"Successfully renamed file to '{os.path.basename(new_path)}'")
+        log_step_success(
+            "Renaming file", f"Successfully renamed file to '{os.path.basename(new_path)}'")
         return True
     except FileNotFoundError:
-        log_step_error("Renaming file", f"Original file '{old_path}' not found for renaming.")
+        log_step_error("Renaming file",
+                       f"Original file '{old_path}' not found for renaming.")
         return False
     except PermissionError:
-        log_step_error("Renaming file", f"Permission denied when renaming '{old_path}'.")
+        log_step_error("Renaming file",
+                       f"Permission denied when renaming '{old_path}'.")
         return False
     except Exception as e:
-        log_step_error("Renaming file", f"Error renaming file '{old_path}' to '{new_path}': {e}")
+        log_step_error(
+            "Renaming file", f"Error renaming file '{old_path}' to '{new_path}': {e}")
         return False
 
 
 def rename_associated_files(current_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
     """Searches for and renames other files in the directory that share the same old base name."""
-    log_step(f"Searching for associated files with base name '{old_base_name}' in '{current_dir}'")
+    log_step(
+        f"Searching for associated files with base name '{old_base_name}' in '{current_dir}'")
     success_count = 0
     fail_count = 0
     total = 0
@@ -728,7 +732,8 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
     try:
         files_in_dir = os.listdir(current_dir)
         total = len(files_in_dir)
-        log_step_success("Searching for associated files", f"Found {total} files in directory. Filtering associated files.")
+        log_step_success("Searching for associated files",
+                         f"Found {total} files in directory. Filtering associated files.")
 
         for idx, f in enumerate(files_in_dir):
             log_step(f"Checking file for association: {f}")
@@ -746,27 +751,35 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
 
                     log_step(f"Checking if target path '{new_f_path}' exists")
                     if os.path.exists(new_f_path):
-                        log_step_error("Renaming associated file", f"Cannot rename '{f}' to '{new_f_name}' because target already exists.")
+                        log_step_error(
+                            "Renaming associated file", f"Cannot rename '{f}' to '{new_f_name}' because target already exists.")
                         fail_count += 1
                         continue
 
-                    log_step(f"Attempting to rename associated file '{f}' to '{new_f_name}'")
+                    log_step(
+                        f"Attempting to rename associated file '{f}' to '{new_f_name}'")
                     if rename_file(f_path, new_f_path):
-                        log_step_success("Renaming associated file", f"Renamed associated file '{f}' to '{new_f_name}'")
+                        log_step_success(
+                            "Renaming associated file", f"Renamed associated file '{f}' to '{new_f_name}'")
                         success_count += 1
                     else:
-                        log_step_error("Renaming associated file", f"Failed to rename associated file '{f}'.")
+                        log_step_error("Renaming associated file",
+                                       f"Failed to rename associated file '{f}'.")
                         fail_count += 1
             except Exception as file_err:
-                log_step_error("Processing associated file", f"Error processing potential associated file '{f}': {file_err}")
+                log_step_error("Processing associated file",
+                               f"Error processing potential associated file '{f}': {file_err}")
                 fail_count += 1
 
-        log_step_success("Scanning associated files", "Completed scanning and renaming associated files.")
+        log_step_success("Scanning associated files",
+                         "Completed scanning and renaming associated files.")
         if success_count > 0 or fail_count > 0:
-            print_summary_box("Associated Files Renaming", success_count + fail_count, success_count, fail_count)
+            print_summary_box("Associated Files Renaming",
+                              success_count + fail_count, success_count, fail_count)
 
     except Exception as e:
-        log_step_error("Associated files renaming process", f"Error during associated files renaming process: {e}")
+        log_step_error("Associated files renaming process",
+                       f"Error during associated files renaming process: {e}")
 
 
 def process_single_file(file: str, current_dir: str, fields: List[str], prompts: Dict[str, str]) -> bool:
@@ -859,11 +872,14 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
                 orig_base_name = os.path.splitext(file)[0]
                 final_base_name = os.path.splitext(new_file_name)[0]
 
-                log_step_success("Renaming file", "Primary PDF renamed successfully. Proceeding to rename associated files.")
-                rename_associated_files(current_dir, orig_base_name, final_base_name, new_file_name)
+                log_step_success(
+                    "Renaming file", "Primary PDF renamed successfully. Proceeding to rename associated files.")
+                rename_associated_files(
+                    current_dir, orig_base_name, final_base_name, new_file_name)
                 return True
             else:
-                log_step_error("Renaming file", "Primary PDF renaming failed. Associated files will not be renamed.")
+                log_step_error(
+                    "Renaming file", "Primary PDF renaming failed. Associated files will not be renamed.")
                 time.sleep(2)
                 return False
         except Exception as e:
