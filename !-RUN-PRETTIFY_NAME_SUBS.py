@@ -5,15 +5,51 @@ import os
 import sys
 import re
 from typing import Optional
+import spacy
+from langdetect import detect, LangDetectException
+
+# Global NLP model cache
+_nlp_models = {}
+
+def get_nlp_model(text: str):
+    global _nlp_models
+    try:
+        lang_code = detect(text)
+    except LangDetectException:
+        lang_code = "pt"
+        
+    spacy_models_map = {
+        "pt": "pt_core_news_sm",
+        "en": "en_core_web_sm",
+        "es": "es_core_news_sm",
+        "it": "it_core_news_sm",
+        "de": "de_core_news_sm",
+        "fr": "fr_core_news_sm",
+        "nl": "nl_core_news_sm",
+        "el": "el_core_news_sm",
+        "ru": "ru_core_news_sm",
+        "xx": "xx_ent_wiki_sm"
+    }
+    
+    model_name = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
+    
+    if model_name not in _nlp_models:
+        try:
+            _nlp_models[model_name] = spacy.load(model_name)
+        except Exception:
+            import subprocess
+            subprocess.check_call([sys.executable, "-m", "spacy", "download", model_name])
+            _nlp_models[model_name] = spacy.load(model_name)
+            
+    return _nlp_models[model_name]
 
 def prettify_name_logic(name: str) -> str:
     """
     Applies the prettification logic to a filename string.
-    - Adds spaces before CamelCase/PascalCase boundaries.
-    - Replaces underscores and hyphens with spaces.
-    - Preserves uppercase acronyms (siglas).
-    - Capitalizes words longer than 3 characters, and the first word.
-    - Lowercases words 3 characters or shorter (if not the first word, not already TitleCased, and not a sigla).
+    1) If the word is a noun, adjective, or verb, it should have its first letter capitalized and all others lowercase.
+    2) If the word is an acronym, it should have all its letters in uppercase.
+    3) All other words should be in lowercase.
+    4) The first letter of the full filename must be capitalized.
     """
     # 1. CamelCase splitting: add space between lowercase/number and uppercase
     name = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', name)
@@ -22,33 +58,54 @@ def prettify_name_logic(name: str) -> str:
     
     # 2. Replace _ and - with spaces
     name = name.replace('_', ' ').replace('-', ' ')
+    name = " ".join(name.split())
     
-    # 3. Split into words
-    words = name.split()
+    if not name:
+        return name
+
+    nlp = get_nlp_model(name)
     
-    new_words = []
-    for i, word in enumerate(words):
-        # Check if sigla (acronym): all letters are uppercase and at least one letter exists
-        is_sigla = word.isupper() and any(c.isalpha() for c in word)
+    original_text = name
+    text_for_nlp = name
+    if text_for_nlp.isupper():
+        text_for_nlp = text_for_nlp.lower()
         
-        if is_sigla:
-            new_words.append(word)
-        elif len(word) > 3:
-            # Word is larger than 3 characters, capitalize it (Title Case)
-            new_words.append(word.capitalize())
-        else:
-            # Word is 3 or fewer characters
-            if i == 0:
-                new_words.append(word.capitalize())
+    doc = nlp(text_for_nlp)
+    
+    result = ""
+    for token in doc:
+        word = token.text
+        original_word = original_text[token.idx : token.idx + len(word)]
+        
+        has_alpha = any(c.isalpha() for c in word)
+        
+        is_acronym = False
+        if has_alpha and original_word.isupper():
+            if not original_text.isupper():
+                is_acronym = True
             else:
-                # If it was already title cased (like 'My' from CamelCase), keep it
-                if word.istitle():
-                    new_words.append(word)
-                else:
-                    new_words.append(word.lower())
-                
-    # 4. Rejoin with a single space
-    return " ".join(new_words)
+                vowels = set("aeiouyáéíóúâêôãõ")
+                if not any(c.lower() in vowels for c in original_word):
+                    is_acronym = True
+                    
+        if not has_alpha:
+            word_fmt = original_word
+        elif is_acronym:
+            word_fmt = original_word.upper()
+        elif token.pos_ in ["NOUN", "PROPN", "ADJ", "VERB", "AUX"]:
+            word_fmt = word.capitalize()
+        else:
+            word_fmt = word.lower()
+            
+        result += word_fmt + token.whitespace_
+        
+    result = result.strip()
+    
+    if result:
+        # 4. The first letter of the full filename must be capitalized.
+        result = result[0].upper() + result[1:]
+        
+    return result
 
 def generate_new_filename(filename: str) -> Optional[str]:
     """
