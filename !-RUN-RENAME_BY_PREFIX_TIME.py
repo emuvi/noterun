@@ -34,7 +34,9 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
         "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
         "%Y-%m-%d %H:%M:%S", "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d",
         "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
-        "%Y%m%d_%H%M%S", "%Y%m%d"
+        "%Y%m%d_%H%M%S", "%Y%m%d",
+        "%Y.%m.%d %H.%M", "%Y-%m-%d %H.%M", "%Y-%m-%d_%H.%M",
+        "%Y%m%d%H%M%S", "%Y%m%d%H%M"
     ]
     
     # Check string prefixes from length 25 down to 8 characters
