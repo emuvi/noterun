@@ -10,7 +10,8 @@ def install_packages():
         "lmstd",
         "click",
         "spacy",
-        "langdetect"
+        "langdetect",
+        "playwright"
     ]
 
     spacy_models = [
@@ -59,6 +60,16 @@ def install_packages():
             print(
                 f"\nERROR: Failed to download spacy model '{model}'. Details: {e}")
             return False
+
+    # Install Playwright browsers
+    try:
+        print("\nInstalling Playwright Chromium browser...")
+        subprocess.check_call(
+            [sys.executable, "-m", "playwright", "install", "chromium"])
+        print("Success: Playwright Chromium browser installed correctly.")
+    except subprocess.CalledProcessError as e:
+        print(f"\nERROR: Failed to install Playwright Chromium browser. Details: {e}")
+        return False
 
     print("-" * 50)
     print("All Python libraries and spacy models have been successfully installed!")
