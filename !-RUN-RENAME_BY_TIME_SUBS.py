@@ -26,10 +26,10 @@ def get_file_time(filepath: str) -> Optional[datetime.datetime]:
         return None
 
     try:
-        # On Windows, st_ctime is usually creation time.
-        return datetime.datetime.fromtimestamp(stat.st_ctime)
-    except AttributeError:
+        # Prioritize modification time over creation time
         return datetime.datetime.fromtimestamp(stat.st_mtime)
+    except AttributeError:
+        return datetime.datetime.fromtimestamp(stat.st_ctime)
 
 def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, Optional[str]]:
     """

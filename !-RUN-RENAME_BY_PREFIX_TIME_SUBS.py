@@ -9,13 +9,10 @@ from typing import Optional, Tuple
 
 def get_file_time(filepath: str) -> Optional[datetime.datetime]:
     """
-    Retrieves the file's creation time, falling back to modification time if necessary.
+    Retrieves the file's modification time.
     """
     try:
         stat_info = os.stat(filepath)
-        # On Windows, st_ctime is usually creation time.
-        if hasattr(stat_info, 'st_ctime'):
-            return datetime.datetime.fromtimestamp(stat_info.st_ctime)
         return datetime.datetime.fromtimestamp(stat_info.st_mtime)
     except OSError as e:
         print(f"[-] OS Error getting file time for '{os.path.basename(filepath)}': {e}")
