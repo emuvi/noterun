@@ -11,7 +11,8 @@ def install_packages():
         "click",
         "spacy",
         "langdetect",
-        "playwright"
+        "playwright",
+        "Pillow"
     ]
 
     spacy_models = [
@@ -68,7 +69,8 @@ def install_packages():
             [sys.executable, "-m", "playwright", "install", "chromium"])
         print("Success: Playwright Chromium browser installed correctly.")
     except subprocess.CalledProcessError as e:
-        print(f"\nERROR: Failed to install Playwright Chromium browser. Details: {e}")
+        print(
+            f"\nERROR: Failed to install Playwright Chromium browser. Details: {e}")
         return False
 
     print("-" * 50)
