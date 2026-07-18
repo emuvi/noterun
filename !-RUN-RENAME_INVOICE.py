@@ -10,7 +10,13 @@ from lmstd import LMStd, ChatResponse, ListModelsResponse
 
 # Initialize the LM Studio client pointing to the local LM Studio server.
 # LM Studio runs a local server on http://localhost:1234
-client = LMStd(base_url="http://localhost:1234", api_token=os.environ.get("LMSTD_APIKEY"))
+try:
+    client = LMStd(base_url=os.environ.get("LMSTD_HOST", "http://localhost:1234"),
+                   api_token=os.environ.get("LMSTD_APIKEY"))
+except Exception as e:
+    print(f"🔴 [Error] Failed to initialize LMStd client: {e}")
+    input("\nPress Enter to exit...")
+    sys.exit(1)
 
 INSTRUCTION_PROMPT = """You are a fiscal document organization assistant. Your task is to read the provided invoice (nota fiscal) and extract three specific pieces of data to compose the file name.
 
