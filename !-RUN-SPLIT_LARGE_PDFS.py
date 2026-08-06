@@ -164,13 +164,8 @@ def process_pdf(filepath: str, directory: str, filename: str) -> bool:
         return False
         
     if success:
-        try:
-            os.remove(filepath)
-            print(f"[+] Successfully split and deleted original file '{filename}'.\n")
-            return True
-        except Exception as e:
-            print(f"[-] Successfully split, but failed to delete original file '{filename}': {e}\n")
-            return False
+        print(f"[+] Successfully split '{filename}'. Original file preserved.\n")
+        return True
             
     return False
 
