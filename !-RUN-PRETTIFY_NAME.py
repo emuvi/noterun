@@ -56,8 +56,8 @@ def prettify_name_logic(name: str) -> str:
     # Add space between uppercase and uppercase followed by lowercase (e.g., XMLParser -> XML Parser)
     name = re.sub(r'([A-Z])([A-Z][a-z])', r'\1 \2', name)
     
-    # 2. Replace _ and - with spaces
-    name = name.replace('_', ' ').replace('-', ' ')
+    # 2. Replace underscores with spaces while preserving hyphens
+    name = name.replace('_', ' ')
     name = " ".join(name.split())
     
     if not name:
@@ -222,8 +222,8 @@ def filter_eligible_files(directory: str) -> list:
         if not os.path.isfile(filepath):
             continue
             
-        # Ignore system/script files or .py/.url/.lnk files
-        if filename.startswith('!-') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
+# Ignore system/script files, hidden files, and common non-target extensions
+            if filename.startswith(('!', '_')) or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
             continue
             
         eligible_files.append(filename)
