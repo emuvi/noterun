@@ -76,27 +76,18 @@ def prettify_name_logic(name: str) -> str:
     for token in doc:
         word = token.text
         original_word = original_text[token.idx : token.idx + len(word)]
-        
         has_alpha = any(c.isalpha() for c in word)
-        
-        is_acronym = False
-        if has_alpha and original_word.isupper():
-            if not original_text.isupper():
-                is_acronym = True
+
+        if has_alpha:
+            if token.pos_ == "PROPN" and len(word) <= 4 and original_word.isupper():
+                word_fmt = original_word
+            elif token.pos_ in ["NOUN", "PROPN", "VERB", "AUX", "ADJ", "ADV"]:
+                word_fmt = word.capitalize()
             else:
-                vowels = set("aeiouyáéíóúâêôãõ")
-                if not any(c.lower() in vowels for c in original_word):
-                    is_acronym = True
-                    
-        if not has_alpha:
-            word_fmt = original_word
-        elif is_acronym:
-            word_fmt = original_word.upper()
-        elif token.pos_ in ["NOUN", "PROPN", "ADJ", "VERB", "AUX"]:
-            word_fmt = word.capitalize()
+                word_fmt = word.lower()
         else:
             word_fmt = word.lower()
-            
+
         result += word_fmt + token.whitespace_
         
     result = result.strip()
@@ -218,14 +209,14 @@ def filter_eligible_files(directory: str) -> list:
 
     for filename in files:
         filepath = os.path.join(directory, filename)
-        
+
         if not os.path.isfile(filepath):
             continue
-            
-# Ignore system/script files, hidden files, and common non-target extensions
-            if filename.startswith(('!', '_')) or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
+
+        # Ignore system/script files, hidden files, and common non-target extensions
+        if filename.startswith(('!', '_')) or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
             continue
-            
+
         eligible_files.append(filename)
         
     print(f"[+] Found {len(eligible_files)} eligible file(s) for renaming evaluation.\n")
