@@ -4,12 +4,31 @@
 import os
 import re
 import sys
+import time
 import datetime
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
+
+def get_current_time() -> str:
+    """
+    Returns the current local time formatted as [HH:MM:SS].
+    
+    Returns:
+        str: The formatted timestamp.
+    """
+    return time.strftime("[%H:%M:%S]")
 
 def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, Optional[str]]:
     """
-    Attempts to parse date/time prefix from the filename based on known formats.
+    Attempts to parse a date/time prefix from the filename based on known formats.
+    
+    Args:
+        filename (str): The filename string to parse.
+        
+    Returns:
+        Tuple[Optional[datetime.datetime], str, Optional[str]]: A tuple containing:
+            - The parsed datetime object, or None if no match found.
+            - The remaining part of the filename after removing the time prefix.
+            - The format string that matched, or None.
     """
     formats = [
         "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
@@ -53,7 +72,7 @@ def remove_time_from_filename(filename: str) -> Tuple[Optional[str], Optional[st
         tuple: (new_name, skip_reason). The newly generated filename, or None if no change is needed/possible.
     """
     # Check if there's a user prefix like "[ PREFIX ] - "
-    match = re.match(r"^(\\[ .*? \\] - )(.*)$", filename)
+    match = re.match(r"^(\[ .*? \] - )(.*)$", filename)
     if match:
         prefix_part = match.group(1)
         name_to_parse = match.group(2)
@@ -72,6 +91,13 @@ def remove_time_from_filename(filename: str) -> Tuple[Optional[str], Optional[st
 def get_safe_target_path(directory: str, filename: str) -> str:
     """
     Generates a unique file path within the given directory to avoid overwriting.
+    
+    Args:
+        directory (str): The destination directory path.
+        filename (str): The desired filename.
+        
+    Returns:
+        str: A safe, unique file path.
     """
     target_path = os.path.join(directory, filename)
     name_part, ext = os.path.splitext(filename)
@@ -87,40 +113,52 @@ def get_safe_target_path(directory: str, filename: str) -> str:
 def rename_file(filepath: str, directory: str, filename: str) -> bool:
     """
     Handles the operation to remove time from a single file's name.
+    
+    Args:
+        filepath (str): The full path to the current file.
+        directory (str): The directory containing the file.
+        filename (str): The current name of the file.
+        
+    Returns:
+        bool: True if operation was successful or file was cleanly skipped, False on error.
     """
+    print(f"{get_current_time()} 🔹 [STEP] [rename_file] Starting - filepath: '{filepath}'")
     try:
         new_name, skip_reason = remove_time_from_filename(filename)
         if not new_name:
-            print(f"[*] Skipping file...")
-            print(f"    File: '{filepath}'")
-            print(f"    Reason: {skip_reason}\n")
+            print(f"{get_current_time()} ℹ️ [LOG] Skipping file '{filename}' - Reason: {skip_reason}")
+            print(f"{get_current_time()} ✅ [SUCCESS] [rename_file] Completed gracefully without changes")
             return True
 
         new_filepath = get_safe_target_path(directory, new_name)
         final_name = os.path.basename(new_filepath)
         
-        print(f"[*] Renaming file...")
-        print(f"    From: '{filepath}'")
-        print(f"    To:   '{new_filepath}'")
+        print(f"{get_current_time()} ℹ️ [LOG] Renaming file from '{filename}' to '{final_name}'")
         
         os.rename(filepath, new_filepath)
-        print(f"[+] Successfully renamed to '{final_name}'.\n")
+        print(f"{get_current_time()} ✅ [SUCCESS] [rename_file] Successfully renamed '{filename}' to '{final_name}'")
         return True
         
     except PermissionError as e:
-        print(f"[-] Permission Denied renaming '{filename}': {e}\n")
+        print(f"{get_current_time()} 🔴 [ERROR] [rename_file] Permission Denied renaming '{filename}': {e}. Fix: Check if the file is open in another program and ensure you have write permissions.")
     except OSError as e:
-        print(f"[-] OS Error renaming '{filename}': {e}\n")
+        print(f"{get_current_time()} 🔴 [ERROR] [rename_file] OS Error renaming '{filename}': {e}. Fix: Verify path validity and disk space.")
     except Exception as e:
-        print(f"[-] Unexpected error renaming '{filename}': {e}\n")
+        print(f"{get_current_time()} 🔴 [ERROR] [rename_file] Unexpected error renaming '{filename}': {e}. Fix: Check logs for further details.")
         
     return False
 
-def filter_eligible_files(base_directory: str) -> list:
+def filter_eligible_files(base_directory: str) -> List[Tuple[str, str, str]]:
     """
     Scans the directory and subdirectories for files that are eligible for renaming.
+    
+    Args:
+        base_directory (str): The root directory path to scan.
+        
+    Returns:
+        List[Tuple[str, str, str]]: A list of tuples (filepath, root, filename) for eligible files.
     """
-    print(f"[*] Scanning directory '{base_directory}' and subdirectories for files to rename...")
+    print(f"{get_current_time()} 🔹 [STEP] [filter_eligible_files] Starting - base_directory: '{base_directory}'")
     eligible_files = []
     
     for root, dirs, files in os.walk(base_directory):
@@ -133,45 +171,71 @@ def filter_eligible_files(base_directory: str) -> list:
                 
             eligible_files.append((filepath, root, filename))
         
-    print(f"[+] Found {len(eligible_files)} eligible file(s) for renaming evaluation.\n")
+    print(f"{get_current_time()} ✅ [SUCCESS] [filter_eligible_files] Found {len(eligible_files)} eligible file(s) for renaming evaluation")
     return eligible_files
 
-def main():
+def print_summary_box(total: int, successes: int, failures: int) -> None:
+    """
+    Prints a visual summary box with Unicode drawing characters showing the final results.
+    
+    Args:
+        total (int): Total number of files processed.
+        successes (int): Total number of successfully renamed files.
+        failures (int): Total number of failures during renaming.
+    """
+    print(f"\n{get_current_time()} 🔹 [STEP] [print_summary_box] Starting summary display")
+    print("╔═══════════════════════════════════════════════╗")
+    print("║          Processing Summary                   ║")
+    print("╠═══════════════════════════════════════════════╣")
+    print(f"║ Total Processed: {total:<29}║")
+    print(f"║ Successes:       {successes:<29}║")
+    print(f"║ Failures:        {failures:<29}║")
+    print("╚═══════════════════════════════════════════════╝")
+    print(f"{get_current_time()} ✅ [SUCCESS] [print_summary_box] Summary display completed\n")
+
+def main() -> int:
     """
     Main execution function. Orchestrates the filtering and renaming
     of files within the script's directory and subfolders to remove time formats.
+    
+    Returns:
+        int: Exit code (0 for success, 1 for errors).
     """
     print("=" * 50)
-    print("   Noterun Remove-Time (Subfolders) Rename Script Initialized")
+    print(f"{get_current_time()} 🔹 [STEP] [main] Noterun Remove-Time (Subfolders) Rename Script Initialized")
     print("=" * 50)
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     files_to_process = filter_eligible_files(script_dir)
     
     if not files_to_process:
-        print("[*] No files to process. Exiting.")
+        print(f"{get_current_time()} ℹ️ [LOG] No eligible files to process. Exiting.")
         return 0
         
     print("-" * 50)
     
     success_count = 0
     failure_count = 0
+    total_files = len(files_to_process)
     
-    for filepath, directory, filename in files_to_process:
+    for i, (filepath, directory, filename) in enumerate(files_to_process, 1):
+        print(f"{get_current_time()} 🔹 [STEP] [rename_cycle] Processing item {i} of {total_files}")
+        print(f"{get_current_time()} ℹ️ [LOG] Processing: '{filename}' in directory '{directory}'")
         if rename_file(filepath, directory, filename):
             success_count += 1
         else:
             failure_count += 1
             
     print("-" * 50)
-    print(f"[*] Renaming process completed.")
-    print(f"[+] Processed successfully: {success_count}")
+    print(f"{get_current_time()} ✅ [SUCCESS] [main] Renaming process completed")
+    
+    print_summary_box(total_files, success_count, failure_count)
     
     if failure_count > 0:
-        print(f"[-] Errors encountered: {failure_count}")
+        print(f"{get_current_time()} 🔴 [ERROR] [main] Completed with {failure_count} errors")
         return 1
     else:
-        print("[+] All files processed without errors!")
+        print(f"{get_current_time()} ✅ [SUCCESS] [main] All files processed without errors!")
         return 0
 
 if __name__ == '__main__':
