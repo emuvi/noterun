@@ -162,8 +162,8 @@ def main():
     success_count = 0
     failure_count = 0
     
-    # Sort files to ensure consistent indexing (alphabetically)
-    files_to_process.sort()
+    # Sort files to ensure consistent indexing (by modification time, oldest first)
+    files_to_process.sort(key=lambda x: os.path.getmtime(os.path.join(script_dir, x)))
     
     # Find the maximum existing index to prevent duplications if new files are added
     max_existing_index = 0
