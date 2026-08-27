@@ -10,26 +10,35 @@ from pathlib import Path
 def main():
     """
     Main execution function. Orchestrates the scanning and conversion of audio
-    files to highly compressed, mono .m4a files optimized for voice archiving.
+    and video files to highly compressed, mono .m4a files optimized for voice archiving.
     """
     print("=" * 50)
     print("   Noterun Audio Archive Converter Initialized")
     print("=" * 50)
 
-    # Common audio file extensions
-    audio_extensions = {'.mp3', '.wav', '.flac', '.ogg', '.aac', '.wma'}
+    # Common audio and video file extensions to convert
+    audio_extensions = {
+        '.mp3', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus', '.m4b', '.aiff', '.alac'
+    }
+    video_extensions = {
+        '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.3g2', '.mpg', '.mpeg', '.ts', '.m2ts', '.ogv', '.vob'
+    }
+    media_extensions = audio_extensions | video_extensions
 
     current_dir = Path.cwd()
 
-    print(f"[*] Scanning directory: {current_dir} for audio files...")
+    print(f"[*] Scanning directory: {current_dir} for audio and video files...")
 
     files_to_convert = []
 
     try:
         for file_path in current_dir.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in audio_extensions:
+            if file_path.is_file() and file_path.suffix.lower() in media_extensions:
                 # Skip already archived files to avoid duplicate conversions
                 if file_path.name.endswith(' (arch).m4a'):
+                    continue
+                # Avoid attempting to convert a file onto itself if source is already .m4a
+                if file_path.suffix.lower() == '.m4a':
                     continue
                 files_to_convert.append(file_path)
     except OSError as e:
@@ -41,10 +50,10 @@ def main():
         return 1
 
     if not files_to_convert:
-        print("[*] No audio files to convert. Exiting.")
+        print("[*] No audio or video files to convert. Exiting.")
         return 0
 
-    print(f"[+] Found {len(files_to_convert)} audio file(s) to convert.")
+    print(f"[+] Found {len(files_to_convert)} media file(s) to convert.")
     print("-" * 50)
 
     success_count = 0
@@ -56,6 +65,7 @@ def main():
         print(f"[*] Converting: '{file_path.name}' -> '{output_file.name}'...")
 
         # FFmpeg parameters for extreme voice compression:
+        # -vn : disable video processing (extract audio stream only)
         # -c:a aac : use native AAC encoder (since it's widely supported for m4a)
         # -ac 1 : downmix to mono
         # -ar 16000 : lower sample rate to 16kHz (plenty for voice clarity)
@@ -64,6 +74,7 @@ def main():
         cmd = [
             'ffmpeg',
             '-i', str(file_path),
+            '-vn',
             '-c:a', 'aac',
             '-ac', '1',
             '-ar', '16000',
@@ -102,7 +113,7 @@ def main():
         print(f"[-] Failed conversions: {failure_count}")
         return 1
     else:
-        print("[+] All audio files converted successfully!")
+        print("[+] All media files converted successfully!")
         return 0
 
 
