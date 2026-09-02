@@ -24,15 +24,143 @@ def get_sober_colors():
         list of str: A list of hexadecimal color strings.
     """
     return [
-        '#4A4E69', # Azul acinzentado escuro
-        '#6B705C', # Verde musgo acinzentado
-        '#8A817C', # Marrom acinzentado
-        '#5C6B73', # Azul petróleo suave
-        '#718355', # Verde oliva desbotado
+        '#FFB4A2', # Pêssego suave
+        '#DDBEA9', # Areia escuro
+        '#B7B7A4', # Bege esverdeado
+        '#E5989B', # Salmão suave
+        '#CB997E', # Terracota suave
+        '#A5A58D', # Verde caqui
+        '#B5838D', # Rosa desbotado
         '#9D8189', # Rosa envelhecido escuro
+        '#8A817C', # Marrom acinzentado
+        '#718355', # Verde oliva desbotado
+        '#6B705C', # Verde musgo acinzentado
+        '#6D6875', # Roxo acinzentado
+        '#5C6B73', # Azul petróleo suave
         '#3D5A80', # Azul marinho sóbrio
-        '#293241'  # Cinza chumbo
+        '#4A4E69', # Azul acinzentado escuro
+        '#85182A'  # Vermelho escuro (Bordô intenso)
     ]
+
+def _get_freeplane_hooks_xml():
+    """Returns the static XML string for Freeplane styles and hooks."""
+    return '''<hooks>
+<hook NAME="MapStyle">
+    <properties edgeColorConfiguration="#808080ff,#ff0000ff,#0000ffff,#00ff00ff,#ff00ffff,#00ffffff,#7c0000ff,#00007cff,#007c00ff,#7c007cff,#007c7cff,#7c7c00ff" auto_compact_layout="true" fit_to_viewport="false" show_icons="BESIDE_NODES" associatedTemplateLocation="template:/essay.mm" show_tags="UNDER_NODES" show_icon_for_attributes="true" show_note_icons="true" showTagCategories="false"/>
+    <tags category_separator="::"/>
+<map_styles>
+<stylenode LOCALIZED_TEXT="styles.root_node" STYLE="oval" UNIFORM_SHAPE="true" VGAP_QUANTITY="24 pt">
+<font SIZE="24"/>
+<stylenode LOCALIZED_TEXT="styles.predefined" POSITION="bottom_or_right" STYLE="bubble">
+<stylenode LOCALIZED_TEXT="default" ID="ID_1190209345" ICON_SIZE="12 pt" COLOR="#000000" STYLE="fork">
+<arrowlink SHAPE="CUBIC_CURVE" COLOR="#000000" WIDTH="2" TRANSPARENCY="200" DASH="" FONT_SIZE="9" FONT_FAMILY="SansSerif" DESTINATION="ID_1190209345" STARTARROW="NONE" ENDARROW="DEFAULT"/>
+<font NAME="SansSerif" SIZE="10" BOLD="false" ITALIC="false"/>
+<richcontent TYPE="DETAILS" CONTENT-TYPE="plain/auto"/>
+<richcontent TYPE="NOTE" CONTENT-TYPE="plain/auto"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="defaultstyle.details"/>
+<stylenode LOCALIZED_TEXT="defaultstyle.tags">
+<font SIZE="10"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="defaultstyle.attributes">
+<font SIZE="9"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="defaultstyle.note" COLOR="#000000" BACKGROUND_COLOR="#ffffff" TEXT_ALIGN="LEFT"/>
+<stylenode LOCALIZED_TEXT="defaultstyle.floating">
+<edge STYLE="hide_edge"/>
+<cloud COLOR="#f0f0f0" SHAPE="ROUND_RECT"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="defaultstyle.selection" BACKGROUND_COLOR="#afd3f7" BORDER_COLOR_LIKE_EDGE="false" BORDER_COLOR="#afd3f7"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.user-defined" POSITION="bottom_or_right" STYLE="bubble">
+<stylenode LOCALIZED_TEXT="styles.ok">
+<icon BUILTIN="button_ok"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.needs_action">
+<icon BUILTIN="messagebox_warning"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.floating_node">
+<cloud COLOR="#ffffff" SHAPE="ARC"/>
+<edge STYLE="hide_edge"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.topic" COLOR="#18898b" STYLE="fork">
+<font NAME="Liberation Sans" SIZE="10" BOLD="true"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.subtopic" COLOR="#cc3300" STYLE="fork">
+<font NAME="Liberation Sans" SIZE="10" BOLD="true"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.subsubtopic" COLOR="#669900">
+<font NAME="Liberation Sans" SIZE="10" BOLD="true"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.connection" COLOR="#606060" STYLE="fork">
+<font NAME="Arial" SIZE="10" BOLD="false"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.important" ID="ID_75090151" COLOR="#ff0000">
+<icon BUILTIN="yes"/>
+<arrowlink COLOR="#ff3333" TRANSPARENCY="255" DESTINATION="ID_75090151"/>
+<font NAME="Liberation Sans" SIZE="10"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.question">
+<icon BUILTIN="help"/>
+<font NAME="Aharoni" SIZE="10"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.key" COLOR="#996600">
+<icon BUILTIN="password"/>
+<font NAME="Liberation Sans" SIZE="10" BOLD="false"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.idea">
+<icon BUILTIN="idea"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.note" COLOR="#990000">
+<font NAME="Liberation Sans" SIZE="10"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.date" COLOR="#0033ff">
+<icon BUILTIN="calendar"/>
+<font NAME="Liberation Sans" SIZE="10"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.website" COLOR="#006633">
+<font NAME="Liberation Sans" SIZE="10"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.list" COLOR="#cc6600">
+<icon BUILTIN="list"/>
+<font NAME="Liberation Sans" SIZE="10" BOLD="true"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.quotation" COLOR="#338800" STYLE="fork">
+<font NAME="Liberation Sans" SIZE="10" BOLD="false" ITALIC="false"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.definition" COLOR="#666600">
+<font NAME="Liberation Sans" SIZE="10" BOLD="false"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.description" COLOR="#996600">
+<font NAME="Liberation Sans" SIZE="10" BOLD="false"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.pending" COLOR="#b3b95c">
+<font NAME="Liberation Sans" SIZE="10"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.flower" COLOR="#ffffff" BACKGROUND_COLOR="#255aba" STYLE="oval" TEXT_ALIGN="CENTER" BORDER_WIDTH_LIKE_EDGE="false" BORDER_WIDTH="22 pt" BORDER_COLOR_LIKE_EDGE="false" BORDER_COLOR="#f9d71c" BORDER_DASH_LIKE_EDGE="false" BORDER_DASH="CLOSE_DOTS" MAX_WIDTH="6 cm" MIN_WIDTH="3 cm"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="styles.AutomaticLayout" POSITION="bottom_or_right" STYLE="bubble">
+<stylenode LOCALIZED_TEXT="AutomaticLayout.level.root" COLOR="#000000" STYLE="oval">
+<font SIZE="18"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="AutomaticLayout.level,1" COLOR="#0033ff">
+<font SIZE="16"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="AutomaticLayout.level,2" COLOR="#00b439">
+<font SIZE="14"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="AutomaticLayout.level,3" COLOR="#990000">
+<font SIZE="12"/>
+</stylenode>
+<stylenode LOCALIZED_TEXT="AutomaticLayout.level,4" COLOR="#111111">
+<font SIZE="10"/>
+</stylenode>
+</stylenode>
+</stylenode>
+</map_styles>
+</hook>
+<hook NAME="AutomaticEdgeColor" COUNTER="4" RULE="ON_BRANCH_CREATION"/>
+</hooks>'''
 
 def _parse_line(line):
     """
@@ -80,7 +208,13 @@ def _add_root_node(map_root, node_attribs, node_stack, level):
         level (int): The hierarchy level (should be 0 for root).
     """
     node_attribs['STYLE'] = 'oval'
+    node_attribs['FOLDED'] = 'false'
     node_elem = ET.SubElement(map_root, 'node', node_attribs)
+    
+    hooks_root = ET.fromstring(_get_freeplane_hooks_xml())
+    for hook in hooks_root:
+        node_elem.append(hook)
+        
     node_stack[level] = node_elem
 
 def _add_child_node(node_attribs, node_stack, level, color_index, sober_colors):
@@ -106,9 +240,11 @@ def _add_child_node(node_attribs, node_stack, level, color_index, sober_colors):
     parent_node = node_stack[level - 1]
     node_elem = ET.SubElement(parent_node, 'node', node_attribs)
     
-    if level == 1:
-        color = sober_colors[color_index % len(sober_colors)]
+    if level >= 1:
+        color = sober_colors[(level - 1) % len(sober_colors)]
         ET.SubElement(node_elem, 'edge', {'COLOR': color})
+        
+    if level == 1:
         color_index += 1
         
     node_stack[level] = node_elem
@@ -127,6 +263,8 @@ def convert_text_to_freeplane_xml(text_content):
     print(f"{get_current_time()} 🔹 [STEP] convert_text_to_freeplane_xml Starting text conversion")
     lines = text_content.strip().split('\n')
     map_root = ET.Element('map', {'version': 'freeplane 1.12.15'})
+    map_root.append(ET.Comment('To view this file, download free mind mapping software Freeplane from https://www.freeplane.org '))
+    ET.SubElement(map_root, 'bookmarks')
     
     sober_colors = get_sober_colors()
     color_index = 0
