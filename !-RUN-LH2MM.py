@@ -262,6 +262,7 @@ def convert_text_to_freeplane_xml(text_content):
     """
     print(f"{get_current_time()} 🔹 [STEP] convert_text_to_freeplane_xml Starting text conversion")
     lines = text_content.strip().split('\n')
+    
     map_root = ET.Element('map', {'version': 'freeplane 1.12.15'})
     map_root.append(ET.Comment('To view this file, download free mind mapping software Freeplane from https://www.freeplane.org '))
     ET.SubElement(map_root, 'bookmarks')
