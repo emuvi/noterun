@@ -6,6 +6,9 @@ import unicodedata
 from pathlib import Path
 from pypdf import PdfReader
 from datetime import datetime
+import importlib
+import spacy
+from langdetect import detect
 
 
 FIELD_MARKERS = (
@@ -13,6 +16,9 @@ FIELD_MARKERS = (
     "Previsibilidade de Atendimento", "Cronograma de Compromissos", "Discussão",
     "Visão Geral", "Faturamento", "ESG", "Links", "Histórico", "Informação de Faturamento"
 )
+
+# Global cache for loaded Spacy models
+nlp_models_cache = {}
 
 
 def get_current_time():
@@ -401,6 +407,183 @@ def parse_date_prefix(filename):
     return None, filename, None
 
 
+def load_spacy_model(lang_code):
+    """
+    Loads spacy and the appropriate NLP model based on language.
+    """
+    func_name = "load_spacy_model"
+    print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Starting - Parameters: lang_code={lang_code}")
+    spacy_models_map = {
+        "pt": "pt_core_news_sm",
+        "en": "en_core_web_sm",
+        "es": "es_core_news_sm",
+        "it": "it_core_news_sm",
+        "de": "de_core_news_sm",
+        "fr": "fr_core_news_sm",
+        "nl": "nl_core_news_sm",
+        "el": "el_core_news_sm",
+        "ru": "ru_core_news_sm",
+        "xx": "xx_ent_wiki_sm"
+    }
+    model_name = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
+
+    try:
+        print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Loading Spacy model '{model_name}' for language '{lang_code}'")
+
+        if model_name in nlp_models_cache:
+            print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Found in cache: {model_name}")
+            return nlp_models_cache[model_name]
+
+        try:
+            model_module = importlib.import_module(model_name)
+            model = model_module.load()
+            nlp_models_cache[model_name] = model
+            print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Loaded dynamically: {model_name}")
+            return model
+        except (ImportError, AttributeError):
+            model = spacy.load(model_name)
+            nlp_models_cache[model_name] = model
+            print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Loaded via spacy.load: {model_name}")
+            return model
+    except Exception as e:
+        print(f"{get_current_time()} 🔴 [ERROR] [{func_name}] Error: Spacy model '{model_name}' could not be loaded ({e}).")
+        raise RuntimeError(f"Spacy model '{model_name}' not loaded: {e}")
+
+
+def abbreviate_words(text, nlp_model, target_pos, preserve_first=True):
+    """
+    Abbreviates words in text matching specific POS tags.
+    """
+    func_name = "abbreviate_words"
+    print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Starting - Parameters: target_pos={target_pos}, preserve_first={preserve_first}")
+    try:
+        print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Abbreviating words based on POS tags.")
+        if not text or text.upper() == "EMPTY":
+            print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Empty text, nothing to abbreviate.")
+            return ""
+
+        doc = nlp_model(text)
+        out = ""
+        first_alpha_seen = False
+
+        for token in doc:
+            word = token.text
+            has_alpha = any(c.isalpha() for c in word)
+
+            is_candidate = token.pos_ in target_pos and has_alpha and len(word) > 2
+
+            if has_alpha and preserve_first and not first_alpha_seen:
+                is_candidate = False
+                first_alpha_seen = True
+
+            if is_candidate:
+                out += word[0] + "." + token.whitespace_
+            else:
+                out += word + token.whitespace_
+
+        res = out.strip()
+        print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Abbreviated result length: {len(res)}")
+        return res
+    except Exception as e:
+        print(f"{get_current_time()} 🔴 [ERROR] [{func_name}] Failed to abbreviate words: {e}")
+        return text
+
+
+def apply_abbreviation_phases(summary, nlp_model):
+    """
+    Applies progressive abbreviation rules to the summary if it exceeds 130 chars.
+    """
+    func_name = "apply_abbreviation_phases"
+    print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Starting - Parameters: summary evaluation")
+    if len(summary) <= 130:
+        print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Summary is within limit, no abbreviation needed.")
+        return summary
+
+    print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Summary > 130 chars. Applying NLP abbreviation phases.")
+
+    # Phase 1: Abbreviate Adverbs (ADV)
+    adv_pos = ["ADV"]
+    summary = abbreviate_words(summary, nlp_model, adv_pos)
+    if len(summary) <= 130:
+        print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed at Phase 1.")
+        return summary
+
+    # Phase 2: Abbreviate Adjectives and Verbs (ADJ, VERB)
+    adj_verb_pos = ["ADJ", "VERB"]
+    summary = abbreviate_words(summary, nlp_model, adj_verb_pos)
+    if len(summary) <= 130:
+        print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed at Phase 2.")
+        return summary
+
+    # Phase 3: Abbreviate Nouns and Proper Nouns (NOUN, PROPN)
+    noun_pos = ["NOUN", "PROPN"]
+    summary = abbreviate_words(summary, nlp_model, noun_pos)
+    if len(summary) <= 130:
+        print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed at Phase 3.")
+        return summary
+
+    # Phase 4: Abbreviate all
+    all_pos = ["ADV", "ADJ", "VERB", "NOUN", "PROPN"]
+    summary = abbreviate_words(summary, nlp_model, all_pos)
+
+    print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed NLP abbreviation phases (all phases).")
+    return summary
+
+
+def prettify_name_logic(name: str, nlp_model) -> str:
+    """
+    Applies the prettification logic to a filename string.
+    """
+    func_name = "prettify_name_logic"
+    print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Starting - Applying prettify name logic")
+    
+    # 1. CamelCase splitting: add space between lowercase/number and uppercase
+    name = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', name)
+    # Add space between uppercase and uppercase followed by lowercase (e.g., XMLParser -> XML Parser)
+    name = re.sub(r'([A-Z])([A-Z][a-z])', r'\1 \2', name)
+    
+    # 2. Replace underscores with spaces while preserving hyphens
+    name = name.replace('_', ' ')
+    name = " ".join(name.split())
+    
+    if not name:
+        return name
+
+    original_text = name
+    text_for_nlp = name
+    if text_for_nlp.isupper():
+        text_for_nlp = text_for_nlp.lower()
+        
+    doc = nlp_model(text_for_nlp)
+    
+    result = ""
+    for token in doc:
+        word = token.text
+        original_word = original_text[token.idx : token.idx + len(word)]
+        has_alpha = any(c.isalpha() for c in word)
+
+        if has_alpha:
+            if token.pos_ == "PROPN" and len(word) <= 4 and original_word.isupper():
+                word_fmt = original_word
+            elif token.pos_ in ["NOUN", "PROPN", "VERB", "AUX", "ADJ", "ADV"]:
+                word_fmt = word.capitalize()
+            else:
+                word_fmt = word.lower()
+        else:
+            word_fmt = word.lower()
+
+        result += word_fmt + token.whitespace_
+        
+    result = result.strip()
+    
+    if result:
+        # 4. The first letter of the full filename must be capitalized.
+        result = result[0].upper() + result[1:]
+        
+    print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed prettify name logic")
+    return result
+
+
 def process_and_rename_pdf(filepath):
     """
     Processa e renomeia um único PDF, retornando True se houve sucesso.
@@ -413,9 +596,9 @@ def process_and_rename_pdf(filepath):
     """
     print(f"{get_current_time()} 🔹 [STEP] [process_and_rename_pdf] Starting processing for: {filepath.name}")
     
-    # Verifica se o arquivo já está no formato final esperado para evitar reprocessamento
-    if re.match(r"^\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2} - \d+ - .+\.pdf$", filepath.name, re.IGNORECASE):
-        print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_pdf] Arquivo '{filepath.name}' já está no formato esperado. Pulando extração.")
+    # Verifica se o arquivo já começa com data e hora no formato esperado para evitar reprocessamento
+    if re.match(r"^\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2} - ", filepath.name, re.IGNORECASE):
+        print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_pdf] Arquivo '{filepath.name}' já começa com data e hora. Pulando extração e processamento.")
         return False
 
     numero, titulo = extract_info_from_pdf(filepath)
@@ -423,6 +606,16 @@ def process_and_rename_pdf(filepath):
     if not (numero and titulo):
         print(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_pdf] Não foi possível extrair número ou título completo de: {filepath.name}")
         return False
+        
+    try:
+        lang_code = detect(titulo)
+    except Exception:
+        lang_code = "xx"
+        
+    current_nlp = load_spacy_model(lang_code)
+    
+    titulo = prettify_name_logic(titulo, current_nlp)
+    titulo = apply_abbreviation_phases(titulo, current_nlp)
         
     sanitized_titulo = sanitize_filename(titulo)
     
@@ -440,12 +633,22 @@ def process_and_rename_pdf(filepath):
         
     if dt:
         formatted_dt = dt.strftime("%Y.%m.%d-%H.%M")
-        new_filename = f"{formatted_dt} - {numero} - {sanitized_titulo}.pdf".upper()
+        new_filename = f"{formatted_dt} - {numero} - {sanitized_titulo}.pdf"
     else:
-        new_filename = f"{numero} - {sanitized_titulo}.pdf".upper()
+        new_filename = f"{numero} - {sanitized_titulo}.pdf"
     
-    if filepath.name.upper() == new_filename:
-        print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_pdf] Arquivo '{filepath.name}' já possui o nome correto.")
+    if filepath.name.lower() == new_filename.lower():
+        print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_pdf] Arquivo '{filepath.name}' já possui o nome base correto.")
+        if filepath.name != new_filename:
+            try:
+                temp_path = filepath.with_name(new_filename + ".tmp")
+                os.rename(filepath, temp_path)
+                os.rename(temp_path, filepath.with_name(new_filename))
+                print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_pdf] Renomeado (ajuste de caixa): '{filepath.name}' -> '{new_filename}'")
+                return True
+            except Exception as e:
+                print(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_pdf] Falha ao ajustar caixa de '{filepath.name}': {e}")
+                return False
         return False
         
     try:
