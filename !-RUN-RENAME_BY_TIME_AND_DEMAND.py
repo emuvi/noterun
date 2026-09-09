@@ -338,8 +338,8 @@ def sanitize_filename(filename):
     clean = re.sub(r"\s+", " ", clean).strip().rstrip(".")
     
     # Limita o tamanho do título para evitar erros do sistema operacional (WinError 123)
-    if len(clean) > 130:
-        clean = clean[:130].strip()
+    if len(clean) > 255:
+        clean = clean[:255].strip()
         
     result = clean or "SEM_TITULO"
     print(f"{get_current_time()} ✅ [SUCCESS] [sanitize_filename] Completed. Final name: '{result}'")
@@ -561,7 +561,7 @@ def load_spacy_model(lang_code):
         raise RuntimeError(f"Spacy model '{model_name}' not loaded: {e}")
 
 
-def abbreviate_words(text, nlp_model, target_pos, preserve_first=True):
+def abbreviate_words(text, nlp_model, target_pos, preserve_first=True, protect_first_n=100):
     """
     Abbreviates words in text matching specific POS tags.
     """
@@ -587,6 +587,9 @@ def abbreviate_words(text, nlp_model, target_pos, preserve_first=True):
                 is_candidate = False
                 first_alpha_seen = True
 
+            if token.idx < protect_first_n:
+                is_candidate = False
+
             if is_candidate:
                 out += word[:3] + "." + token.whitespace_
             else:
@@ -602,34 +605,34 @@ def abbreviate_words(text, nlp_model, target_pos, preserve_first=True):
 
 def apply_abbreviation_phases(summary, nlp_model):
     """
-    Applies progressive abbreviation rules to the summary if it exceeds 130 chars.
+    Applies progressive abbreviation rules to the summary if it exceeds 255 chars.
     """
     func_name = "apply_abbreviation_phases"
     print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Starting - Parameters: summary evaluation")
-    if len(summary) <= 130:
+    if len(summary) <= 255:
         print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Summary is within limit, no abbreviation needed.")
         return summary
 
-    print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Summary > 130 chars. Applying NLP abbreviation phases.")
+    print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Summary > 255 chars. Applying NLP abbreviation phases.")
 
     # Phase 1: Abbreviate Adverbs (ADV)
     adv_pos = ["ADV"]
     summary = abbreviate_words(summary, nlp_model, adv_pos)
-    if len(summary) <= 130:
+    if len(summary) <= 255:
         print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed at Phase 1.")
         return summary
 
     # Phase 2: Abbreviate Adjectives and Verbs (ADJ, VERB)
     adj_verb_pos = ["ADJ", "VERB"]
     summary = abbreviate_words(summary, nlp_model, adj_verb_pos)
-    if len(summary) <= 130:
+    if len(summary) <= 255:
         print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed at Phase 2.")
         return summary
 
     # Phase 3: Abbreviate Nouns and Proper Nouns (NOUN, PROPN)
     noun_pos = ["NOUN", "PROPN"]
     summary = abbreviate_words(summary, nlp_model, noun_pos)
-    if len(summary) <= 130:
+    if len(summary) <= 255:
         print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed at Phase 3.")
         return summary
 
@@ -637,11 +640,11 @@ def apply_abbreviation_phases(summary, nlp_model):
     all_pos = ["ADV", "ADJ", "VERB", "NOUN", "PROPN"]
     summary = abbreviate_words(summary, nlp_model, all_pos)
 
-    if len(summary) > 130:
+    if len(summary) > 255:
         doc = nlp_model(summary)
         truncated = ""
         for token in doc:
-            if len(truncated) + len(token.text) + 3 > 130:
+            if len(truncated) + len(token.text) + 3 > 255:
                 break
             truncated += token.text + token.whitespace_
         summary = truncated.strip() + "..."
