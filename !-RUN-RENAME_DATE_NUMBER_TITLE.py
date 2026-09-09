@@ -257,6 +257,47 @@ def extract_text_from_pdf(pdf_path):
         raise
 
 
+def is_demanda_pdf(text):
+    """
+    Verifica se o texto do PDF possui indícios fortes de ser um documento de demanda.
+    
+    Parameters:
+        text (str): Texto extraído do PDF.
+        
+    Returns:
+        bool: True se parecer uma demanda, False caso contrário.
+    """
+    print(f"{get_current_time()} 🔹 [STEP] [is_demanda_pdf] Checking if PDF is a demand.")
+    if not text:
+        return False
+        
+    text_lower = text.lower()
+    
+    strong_terms = [
+        "gestão de demandas",
+        "gestao de demandas",
+        "demandas (siged)",
+        "ibm engineering workflow management"
+    ]
+    
+    if any(term in text_lower for term in strong_terms):
+        print(f"{get_current_time()} ✅ [SUCCESS] [is_demanda_pdf] Strong term found. It is a demand.")
+        return True
+        
+    has_demanda = "demanda" in text_lower
+    has_tipo_demanda = "tipo: demanda" in text_lower or "tipo:demanda" in text_lower
+    
+    form_fields = ["detalhes", "origem", "status:", "solicitante:", "título:"]
+    found_fields = sum(1 for field in form_fields if field in text_lower)
+    
+    if has_tipo_demanda or (has_demanda and found_fields >= 2):
+        print(f"{get_current_time()} ✅ [SUCCESS] [is_demanda_pdf] Conjunction of terms found. It is a demand.")
+        return True
+        
+    print(f"{get_current_time()} ℹ️ [LOG] [is_demanda_pdf] Not identified as a demand.")
+    return False
+
+
 def extract_info_from_pdf(pdf_path):
     """
     Lê o PDF e tenta extrair o número da demanda e o título com base em padrões resilientes.
@@ -265,7 +306,7 @@ def extract_info_from_pdf(pdf_path):
         pdf_path (Path): Path object to the PDF file.
 
     Returns:
-        tuple: (numero, titulo) strings, or (None, None) if extraction fails.
+        tuple: (numero, titulo, text) strings, or (None, None, "") if extraction fails.
     """
     print(f"{get_current_time()} 🔹 [STEP] [extract_info_from_pdf] Starting analysis on: {pdf_path.name}")
     try:
@@ -275,11 +316,11 @@ def extract_info_from_pdf(pdf_path):
         titulo = find_title(text, numero) if numero else None
         
         print(f"{get_current_time()} ✅ [SUCCESS] [extract_info_from_pdf] Completed extraction for {pdf_path.name}. Numero: {numero}, Titulo: {titulo}")
-        return numero, titulo
+        return numero, titulo, text
     except Exception as e:
         print(f"{get_current_time()} 🔴 [ERROR] [extract_info_from_pdf] Erro ao processar o arquivo {pdf_path.name}: {e}")
         print(f"{get_current_time()} ℹ️ [LOG] [extract_info_from_pdf] How to fix: Ensure the file is a valid, readable PDF document.")
-        return None, None
+        return None, None, ""
 
 
 def sanitize_filename(filename):
@@ -405,6 +446,76 @@ def parse_date_prefix(filename):
                 continue
     print(f"{get_current_time()} ℹ️ [LOG] [parse_date_prefix] No date prefix found.")
     return None, filename, None
+
+
+def generate_new_filename(filename, filepath):
+    """
+    Generates the targeted standard filename using parsed or file system dates.
+    """
+    print(f"{get_current_time()} 🔹 [STEP] [generate_new_filename] Starting for: '{filename}'")
+    dt, rest_of_name, fmt = parse_date_prefix(filename)
+    target_fmt = "%Y.%m.%d-%H.%M"
+
+    if dt:
+        if fmt == target_fmt and filename.startswith(dt.strftime(target_fmt) + " - "):
+            print(f"{get_current_time()} ✅ [SUCCESS] [generate_new_filename] Already perfectly formatted.")
+            return None, "Already perfectly formatted with date prefix"
+            
+        if fmt and '%H' not in fmt:
+            file_dt = get_file_time(filepath)
+            if file_dt:
+                dt = dt.replace(hour=file_dt.hour, minute=file_dt.minute, second=file_dt.second)
+    else:
+        dt = get_file_time(filepath)
+        if not dt:
+            print(f"{get_current_time()} 🔴 [ERROR] [generate_new_filename] Cannot process without a valid date.")
+            return None, "Cannot process without a valid date in file metadata"
+            
+        rest_of_name = filename
+        
+        if rest_of_name.startswith(' - '):
+            rest_of_name = rest_of_name[3:]
+        elif rest_of_name.startswith('- ') or rest_of_name.startswith(' -'):
+            rest_of_name = rest_of_name[2:]
+
+    formatted_dt = dt.strftime(target_fmt)
+    new_name = f"{formatted_dt} - {rest_of_name}"
+    
+    if new_name == filename:
+        print(f"{get_current_time()} ✅ [SUCCESS] [generate_new_filename] Already perfectly formatted.")
+        return None, "Already perfectly formatted with date prefix"
+        
+    print(f"{get_current_time()} ✅ [SUCCESS] [generate_new_filename] Generated new name: '{new_name}'")
+    return new_name, None
+
+
+def process_and_rename_by_time(filepath):
+    """
+    Handles the date extraction and renaming operation for a file.
+    """
+    print(f"{get_current_time()} 🔹 [STEP] [process_and_rename_by_time] Starting for: {filepath.name}")
+    
+    new_name, skip_reason = generate_new_filename(filepath.name, filepath)
+    if not new_name:
+        print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_by_time] Skipping '{filepath.name}': {skip_reason}")
+        return True # Considered success (no action needed)
+        
+    try:
+        if filepath.name.lower() == new_name.lower():
+            if filepath.name != new_name:
+                temp_path = filepath.with_name(new_name + ".tmp")
+                os.rename(filepath, temp_path)
+                os.rename(temp_path, filepath.with_name(new_name))
+                print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_by_time] Renamed (case adjustment): '{filepath.name}' -> '{new_name}'")
+            return True
+            
+        new_filepath = unique_path(filepath.with_name(new_name))
+        os.rename(filepath, new_filepath)
+        print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_by_time] Renamed: '{filepath.name}' -> '{new_filepath.name}'")
+        return True
+    except Exception as e:
+        print(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_by_time] Falha ao renomear '{filepath.name}': {e}")
+        return False
 
 
 def load_spacy_model(lang_code):
@@ -584,27 +695,29 @@ def prettify_name_logic(name: str, nlp_model) -> str:
     return result
 
 
-def process_and_rename_pdf(filepath):
+def process_file(filepath):
     """
-    Processa e renomeia um único PDF, retornando True se houve sucesso.
-
-    Parameters:
-        filepath (Path): The original file Path object.
-
-    Returns:
-        bool: True if renamed successfully, False otherwise (ignored or failed).
+    Processa um arquivo, sendo ele PDF (extraindo demanda) ou outro formato (apenas data).
     """
-    print(f"{get_current_time()} 🔹 [STEP] [process_and_rename_pdf] Starting processing for: {filepath.name}")
+    print(f"{get_current_time()} 🔹 [STEP] [process_file] Starting processing for: {filepath.name}")
     
-    # Verifica se o arquivo já começa com data e hora no formato esperado para evitar reprocessamento
+    if filepath.suffix.lower() != ".pdf":
+        print(f"{get_current_time()} ℹ️ [LOG] [process_file] O arquivo '{filepath.name}' não é PDF. Aplicando lógica de data-hora.")
+        return process_and_rename_by_time(filepath)
+        
+    # Processamento de PDF
     if re.match(r"^\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2} - ", filepath.name, re.IGNORECASE):
-        print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_pdf] Arquivo '{filepath.name}' já começa com data e hora. Pulando extração e processamento.")
+        print(f"{get_current_time()} ℹ️ [LOG] [process_file] PDF '{filepath.name}' já começa com data e hora. Pulando extração.")
         return False
 
-    numero, titulo = extract_info_from_pdf(filepath)
+    numero, titulo, text = extract_info_from_pdf(filepath)
     
     if not (numero and titulo):
-        print(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_pdf] Não foi possível extrair número ou título completo de: {filepath.name}")
+        if text and not is_demanda_pdf(text):
+            print(f"{get_current_time()} ℹ️ [LOG] [process_file] O PDF '{filepath.name}' não é uma demanda. Será renomeado com data-hora.")
+            return process_and_rename_by_time(filepath)
+
+        print(f"{get_current_time()} 🔴 [ERROR] [process_file] Não foi possível extrair número ou título completo de: {filepath.name}")
         return False
         
     try:
@@ -619,11 +732,9 @@ def process_and_rename_pdf(filepath):
         
     sanitized_titulo = sanitize_filename(titulo)
     
-    # Extrai a data do nome do arquivo (se presente) ou usa a data de modificação
     dt, _, fmt = parse_date_prefix(filepath.name)
     
     if dt:
-        # Se o formato reconhecido não tem hora, pega dos metadados do arquivo
         if fmt and '%H' not in fmt:
             file_dt = get_file_time(filepath)
             if file_dt:
@@ -638,63 +749,78 @@ def process_and_rename_pdf(filepath):
         new_filename = f"{numero} - {sanitized_titulo}.pdf"
     
     if filepath.name.lower() == new_filename.lower():
-        print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_pdf] Arquivo '{filepath.name}' já possui o nome base correto.")
+        print(f"{get_current_time()} ℹ️ [LOG] [process_file] Arquivo '{filepath.name}' já possui o nome base correto.")
         if filepath.name != new_filename:
             try:
                 temp_path = filepath.with_name(new_filename + ".tmp")
                 os.rename(filepath, temp_path)
                 os.rename(temp_path, filepath.with_name(new_filename))
-                print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_pdf] Renomeado (ajuste de caixa): '{filepath.name}' -> '{new_filename}'")
+                print(f"{get_current_time()} ✅ [SUCCESS] [process_file] Renomeado (ajuste de caixa): '{filepath.name}' -> '{new_filename}'")
                 return True
             except Exception as e:
-                print(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_pdf] Falha ao ajustar caixa de '{filepath.name}': {e}")
+                print(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao ajustar caixa de '{filepath.name}': {e}")
                 return False
         return False
         
     try:
         new_filepath = unique_path(filepath.with_name(new_filename))
         os.rename(filepath, new_filepath)
-        print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_pdf] Renomeado: '{filepath.name}' -> '{new_filepath.name}'")
+        print(f"{get_current_time()} ✅ [SUCCESS] [process_file] Renomeado: '{filepath.name}' -> '{new_filepath.name}'")
         return True
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_pdf] Falha ao renomear '{filepath.name}': {e}")
-        print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_pdf] How to fix: Check file permissions and ensure the file is not open in another program.")
+        print(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao renomear '{filepath.name}': {e}")
+        print(f"{get_current_time()} ℹ️ [LOG] [process_file] How to fix: Check file permissions.")
         return False
+
+
+def filter_eligible_files(directory):
+    """
+    Filtra os arquivos elegíveis no diretório.
+    """
+    eligible = []
+    for f in sorted(directory.iterdir()):
+        if not f.is_file():
+            continue
+        filename = f.name
+        if filename.startswith('!-') or filename.startswith('_') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
+            continue
+        eligible.append(f)
+    return eligible
 
 
 def main():
     """
-    Main function to orchestrate the PDF scanning and renaming process.
+    Main function to orchestrate the scanning and renaming process.
 
     Returns:
         int: 0 on success or if no items to process, 1 if failures occurred.
     """
     print(f"{get_current_time()} 🔹 [STEP] [main] Starting process")
     current_dir = Path.cwd()
-    print(f"{get_current_time()} ℹ️ [LOG] [main] Iniciando o mapeamento de PDFs no diretório corrente: {current_dir}")
+    print(f"{get_current_time()} ℹ️ [LOG] [main] Iniciando o mapeamento de arquivos no diretório corrente: {current_dir}")
 
-    pdf_files = [f for f in sorted(current_dir.iterdir()) if f.suffix.lower() == ".pdf"]
-    total_files = len(pdf_files)
+    files_to_process = filter_eligible_files(current_dir)
+    total_files = len(files_to_process)
 
     if total_files == 0:
-        print(f"{get_current_time()} ℹ️ [LOG] [main] Nenhum arquivo PDF encontrado para processar no diretório.")
+        print(f"{get_current_time()} ℹ️ [LOG] [main] Nenhum arquivo elegível encontrado para processar no diretório.")
         return 0
 
-    print(f"{get_current_time()} 🔹 [STEP] [main_cycle] Found {total_files} PDF files to process.")
+    print(f"{get_current_time()} 🔹 [STEP] [main_cycle] Found {total_files} files to process.")
 
     renamed_count = 0
     failures_or_ignored = 0
     error_reports = []
 
-    for i, filepath in enumerate(pdf_files, 1):
+    for i, filepath in enumerate(files_to_process, 1):
         print(f"\n{get_current_time()} 🔹 [STEP] [main_cycle] Processing item {i} of {total_files}")
-        print(f"{get_current_time()} ℹ️ [LOG] Processing: {filepath.name} with specific_parameters None")
+        print(f"{get_current_time()} ℹ️ [LOG] Processing: {filepath.name}")
 
         old_stdout = sys.stdout
         sys.stdout = capture_out = io.StringIO()
         
         try:
-            success = process_and_rename_pdf(filepath)
+            success = process_file(filepath)
         finally:
             sys.stdout = old_stdout
             
