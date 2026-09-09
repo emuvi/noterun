@@ -581,14 +581,14 @@ def abbreviate_words(text, nlp_model, target_pos, preserve_first=True):
             word = token.text
             has_alpha = any(c.isalpha() for c in word)
 
-            is_candidate = token.pos_ in target_pos and has_alpha and len(word) > 2
+            is_candidate = token.pos_ in target_pos and has_alpha and len(word) > 4
 
             if has_alpha and preserve_first and not first_alpha_seen:
                 is_candidate = False
                 first_alpha_seen = True
 
             if is_candidate:
-                out += word[0] + "." + token.whitespace_
+                out += word[:3] + "." + token.whitespace_
             else:
                 out += word + token.whitespace_
 
@@ -636,6 +636,15 @@ def apply_abbreviation_phases(summary, nlp_model):
     # Phase 4: Abbreviate all
     all_pos = ["ADV", "ADJ", "VERB", "NOUN", "PROPN"]
     summary = abbreviate_words(summary, nlp_model, all_pos)
+
+    if len(summary) > 130:
+        doc = nlp_model(summary)
+        truncated = ""
+        for token in doc:
+            if len(truncated) + len(token.text) + 3 > 130:
+                break
+            truncated += token.text + token.whitespace_
+        summary = truncated.strip() + "..."
 
     print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed NLP abbreviation phases (all phases).")
     return summary
