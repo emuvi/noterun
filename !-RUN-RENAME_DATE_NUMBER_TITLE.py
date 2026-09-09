@@ -713,7 +713,7 @@ def process_file(filepath):
     numero, titulo, text = extract_info_from_pdf(filepath)
     
     if not (numero and titulo):
-        if text and not is_demanda_pdf(text):
+        if not is_demanda_pdf(text):
             print(f"{get_current_time()} ℹ️ [LOG] [process_file] O PDF '{filepath.name}' não é uma demanda. Será renomeado com data-hora.")
             return process_and_rename_by_time(filepath)
 
