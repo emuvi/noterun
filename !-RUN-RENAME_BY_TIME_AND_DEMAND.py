@@ -479,7 +479,24 @@ def generate_new_filename(filename, filepath):
             rest_of_name = rest_of_name[2:]
 
     formatted_dt = dt.strftime(target_fmt)
-    new_name = f"{formatted_dt} - {rest_of_name}"
+    
+    prefix = f"{formatted_dt} - "
+    suffix = filepath.suffix
+    
+    if rest_of_name.endswith(suffix):
+        rest_of_name_stem = rest_of_name[:-len(suffix)]
+    else:
+        rest_of_name_stem = rest_of_name
+        
+    max_allowed = min(255, 258 - len(str(filepath.parent)))
+    available_for_stem = max_allowed - len(prefix) - len(suffix)
+    if available_for_stem < 10:
+        available_for_stem = 10
+        
+    if len(rest_of_name_stem) > available_for_stem:
+        rest_of_name_stem = rest_of_name_stem[:available_for_stem].strip().rstrip(".")
+        
+    new_name = f"{prefix}{rest_of_name_stem}{suffix}"
     
     if new_name == filename:
         print(f"{get_current_time()} ✅ [SUCCESS] [generate_new_filename] Already perfectly formatted.")
@@ -756,9 +773,21 @@ def process_file(filepath):
         
     if dt:
         formatted_dt = dt.strftime("%Y.%m.%d-%H.%M")
-        new_filename = f"{formatted_dt} - {numero} - {sanitized_titulo}.pdf"
+        prefix = f"{formatted_dt} - {numero} - "
     else:
-        new_filename = f"{numero} - {sanitized_titulo}.pdf"
+        prefix = f"{numero} - "
+        
+    suffix = ".pdf"
+    max_allowed = min(255, 258 - len(str(filepath.parent)))
+    available_for_title = max_allowed - len(prefix) - len(suffix)
+    
+    if available_for_title < 10:
+        available_for_title = 10
+        
+    if len(sanitized_titulo) > available_for_title:
+        sanitized_titulo = sanitized_titulo[:available_for_title].strip().rstrip(".")
+        
+    new_filename = f"{prefix}{sanitized_titulo}{suffix}"
     
     if filepath.name.lower() == new_filename.lower():
         print(f"{get_current_time()} ℹ️ [LOG] [process_file] Arquivo '{filepath.name}' já possui o nome base correto.")
