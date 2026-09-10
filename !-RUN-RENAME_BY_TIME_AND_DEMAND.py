@@ -758,6 +758,9 @@ def process_file(filepath):
     
     titulo = prettify_name_logic(titulo, current_nlp)
     titulo = apply_abbreviation_phases(titulo, current_nlp)
+    
+    # Capitalize contents within square brackets
+    titulo = re.sub(r'\[(.*?)\]', lambda m: f"[{m.group(1).upper()}]", titulo)
         
     sanitized_titulo = sanitize_filename(titulo)
     
