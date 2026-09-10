@@ -515,7 +515,7 @@ def process_and_rename_by_time(filepath):
     new_name, skip_reason = generate_new_filename(filepath.name, filepath)
     if not new_name:
         print(f"{get_current_time()} ℹ️ [LOG] [process_and_rename_by_time] Skipping '{filepath.name}': {skip_reason}")
-        return True # Considered success (no action needed)
+        return "IGNORED"
         
     try:
         if filepath.name.lower() == new_name.lower():
@@ -524,15 +524,16 @@ def process_and_rename_by_time(filepath):
                 os.rename(filepath, temp_path)
                 os.rename(temp_path, filepath.with_name(new_name))
                 print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_by_time] Renamed (case adjustment): '{filepath.name}' -> '{new_name}'")
-            return True
+                return "SUCCESS"
+            return "IGNORED"
             
         new_filepath = unique_path(filepath.with_name(new_name))
         os.rename(filepath, new_filepath)
         print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_by_time] Renamed: '{filepath.name}' -> '{new_filepath.name}'")
-        return True
+        return "SUCCESS"
     except Exception as e:
         print(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_by_time] Falha ao renomear '{filepath.name}': {e}")
-        return False
+        return "ERROR"
 
 
 def load_spacy_model(lang_code):
@@ -737,7 +738,7 @@ def process_file(filepath):
     # Processamento de PDF
     if re.match(r"^\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2} - ", filepath.name, re.IGNORECASE):
         print(f"{get_current_time()} ℹ️ [LOG] [process_file] PDF '{filepath.name}' já começa com data e hora. Pulando extração.")
-        return False
+        return "IGNORED"
 
     numero, titulo, text = extract_info_from_pdf(filepath)
     
@@ -747,7 +748,7 @@ def process_file(filepath):
             return process_and_rename_by_time(filepath)
 
         print(f"{get_current_time()} 🔴 [ERROR] [process_file] Não foi possível extrair número ou título completo de: {filepath.name}")
-        return False
+        return "ERROR"
         
     try:
         lang_code = detect(titulo)
@@ -800,21 +801,21 @@ def process_file(filepath):
                 os.rename(filepath, temp_path)
                 os.rename(temp_path, filepath.with_name(new_filename))
                 print(f"{get_current_time()} ✅ [SUCCESS] [process_file] Renomeado (ajuste de caixa): '{filepath.name}' -> '{new_filename}'")
-                return True
+                return "SUCCESS"
             except Exception as e:
                 print(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao ajustar caixa de '{filepath.name}': {e}")
-                return False
-        return False
+                return "ERROR"
+        return "IGNORED"
         
     try:
         new_filepath = unique_path(filepath.with_name(new_filename))
         os.rename(filepath, new_filepath)
         print(f"{get_current_time()} ✅ [SUCCESS] [process_file] Renomeado: '{filepath.name}' -> '{new_filepath.name}'")
-        return True
+        return "SUCCESS"
     except Exception as e:
         print(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao renomear '{filepath.name}': {e}")
         print(f"{get_current_time()} ℹ️ [LOG] [process_file] How to fix: Check file permissions.")
-        return False
+        return "ERROR"
 
 
 def filter_eligible_files(directory):
@@ -853,7 +854,8 @@ def main():
     print(f"{get_current_time()} 🔹 [STEP] [main_cycle] Found {total_files} files to process.")
 
     renamed_count = 0
-    failures_or_ignored = 0
+    ignored_count = 0
+    failed_count = 0
     error_reports = []
 
     for i, filepath in enumerate(files_to_process, 1):
@@ -864,19 +866,22 @@ def main():
         sys.stdout = capture_out = io.StringIO()
         
         try:
-            success = process_file(filepath)
+            status = process_file(filepath)
         finally:
             sys.stdout = old_stdout
             
         output = capture_out.getvalue()
         print(output, end="")
         
-        if success:
+        if status == "SUCCESS":
             print(f"{get_current_time()} ✅ [SUCCESS] [process_item] Successfully renamed {filepath.name}")
             renamed_count += 1
+        elif status == "IGNORED":
+            print(f"{get_current_time()} ℹ️ [IGNORED] [process_item] File {filepath.name} was ignored.")
+            ignored_count += 1
         else:
-            print(f"{get_current_time()} 🔴 [ERROR/IGNORED] [process_item] File {filepath.name} was ignored or failed.")
-            failures_or_ignored += 1
+            print(f"{get_current_time()} 🔴 [ERROR] [process_item] File {filepath.name} failed.")
+            failed_count += 1
             if "🔴 [ERROR]" in output:
                 error_reports.append((filepath.name, output))
 
@@ -888,7 +893,8 @@ def main():
 ╠═══════════════════════════════════════════════╣
 ║ Total Processed: {str(total_files).ljust(29)}║
 ║ Successes:       {str(renamed_count).ljust(29)}║
-║ Ignored/Failed:  {str(failures_or_ignored).ljust(29)}║
+║ Ignored:         {str(ignored_count).ljust(29)}║
+║ Failed:          {str(failed_count).ljust(29)}║
 ╚═══════════════════════════════════════════════╝
 """
     print(summary)
