@@ -6,12 +6,12 @@ import sys
 import io
 
 try:
-    from pypdf import PdfReader, PdfWriter
+    from PyPDF2 import PdfReader, PdfWriter
 except ImportError:
     import subprocess
-    print("[*] 'pypdf' library not found. Installing...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf"])
-    from pypdf import PdfReader, PdfWriter
+    print("[*] 'PyPDF2' library not found. Installing...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyPDF2"])
+    from PyPDF2 import PdfReader, PdfWriter
 
 # ==============================================================================
 # CONFIGURAÇÕES (Settings)

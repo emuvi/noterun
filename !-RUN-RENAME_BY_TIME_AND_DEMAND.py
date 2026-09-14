@@ -4,7 +4,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
-from pypdf import PdfReader
+from PyPDF2 import PdfReader
 from datetime import datetime
 import importlib
 import spacy
