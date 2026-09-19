@@ -820,10 +820,6 @@ def main() -> None:
     print("This script will continuously monitor the current folder for new PDF files (excluding 'RAND*' and files with '~')")
     print("to append a summary to their filename (and their sidecar files).")
     print("==========================================================================================")
-    proceed = input("Do you want to proceed? (yes/no): ").strip().lower()
-    if proceed != 'yes':
-        log_info("main", "Operation canceled.")
-        return
 
     client = init_lmstd_client()
     if not client:

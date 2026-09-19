@@ -943,12 +943,6 @@ def main_loop() -> None:
     fields = ["Author", "Series", "Volume", "Title", "Subtitle", "Edition"]
     prompts = FIELD_PROMPTS
 
-    proceed = input(
-        "Do you want to proceed with AI renaming all PDF files starting with 'RAND ' in a single LLM call? (yes/no): ").strip().lower()
-    if proceed != 'yes':
-        log_message("Operation canceled.")
-        return
-
     log_message("Entering continuous monitoring mode. Press Ctrl+C to exit.")
     print("-" * 90)
 

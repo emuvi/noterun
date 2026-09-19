@@ -517,10 +517,6 @@ def main() -> None:
 
     print("\nThis script will continuously monitor the current folder for new PDF files (excluding 'RAND*') to classify and move.")
     print("It will classify files into the subfolders of the parent directory.")
-    proceed = input("Do you want to proceed? (yes/no): ").strip().lower()
-    if proceed != 'yes':
-        log_message("Operation canceled.")
-        return
 
     log_message(
         "Starting continuous classification watcher. Press Ctrl+C to stop.")
