@@ -17,6 +17,24 @@ from PyQt5.QtWidgets import (QApplication, QLabel, QMainWindow, QVBoxLayout,
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
 
+
+def clean_text_for_llm(value: Any) -> str:
+    """Normalizes text to valid UTF-8 before sending it to the LLM."""
+    if value is None:
+        return ""
+
+    text = str(value)
+    text = text.replace("\ufeff", "")
+    text = text.replace("\x00", "")
+    text = text.encode("utf-8", errors="replace").decode("utf-8")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "".join(ch if ch.isprintable() or ch in "\n\t" else " " for ch in text)
+    text = re.sub(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]", " ", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 # Initialize the LM Studio client pointing to the local LM Studio server.
 try:
     client = LMStd(base_url=os.environ.get("LMSTD_HOST", "http://localhost:1234"),
@@ -269,13 +287,15 @@ def query_model_classification(pdf_text: str, prompt: str) -> str:
         "Do not provide any explanations, reasoning, or conversational text."
     )
 
-    full_prompt = f"{prompt}\n\n### TEXTO DO DOCUMENTO ###\n{pdf_text}\n\n### SUA RESPOSTA (APENAS A CATEGORIA EXATA) ###\n"
+    safe_prompt = clean_text_for_llm(prompt)
+    safe_pdf_text = clean_text_for_llm(pdf_text)
+    full_prompt = f"{safe_prompt}\n\n### TEXTO DO DOCUMENTO ###\n{safe_pdf_text}\n\n### SUA RESPOSTA (APENAS A CATEGORIA EXATA) ###\n"
 
     try:
         print_step("Sending request to the model...")
         response: ChatResponse = client.chat(
-            system_prompt=system_prompt,
-            input_data=full_prompt,
+            system_prompt=clean_text_for_llm(system_prompt),
+            input_data=clean_text_for_llm(full_prompt),
             temperature=0.0,
         )
         content: Optional[str] = None
@@ -286,8 +306,9 @@ def query_model_classification(pdf_text: str, prompt: str) -> str:
                     break
 
         if content:
-            print_success(f"Model responded: {content.strip()}")
-            return content.strip()
+            cleaned_content = clean_text_for_llm(content).strip()
+            print_success(f"Model responded: {cleaned_content}")
+            return cleaned_content
 
         print_error("Model returned an empty response.")
         return ""

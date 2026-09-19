@@ -23,6 +23,23 @@ nlp_models_cache: Dict[str, Any] = {}
 _failed_to_move_files = set()
 
 
+def clean_text_for_llm(value: Any) -> str:
+    """Normalizes text to valid UTF-8 for LLM prompts and responses."""
+    if value is None:
+        return ""
+
+    text = str(value)
+    text = text.replace("\ufeff", "")
+    text = text.replace("\x00", "")
+    text = text.encode("utf-8", errors="replace").decode("utf-8")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "".join(ch if ch.isprintable() or ch in "\n\t" else " " for ch in text)
+    text = re.sub(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]", " ", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def get_current_time() -> str:
     """
     Returns the current time formatted as HH:MM:SS.
@@ -242,14 +259,14 @@ Example Response:
 
 ### DOCUMENT TEXT ###
 """
-        full_prompt = f"{master_prompt}\n{pdf_text}"
+        full_prompt = f"{master_prompt}\n{clean_text_for_llm(pdf_text)}"
 
         if client is None:
             raise ConnectionError("LM Studio client is not initialized.")
 
         response: ChatResponse = client.chat(
             system_prompt="You are a helpful assistant specialized in extracting specific information from documents into JSON format. You only respond with raw, valid JSON.",
-            input_data=full_prompt,
+            input_data=clean_text_for_llm(full_prompt),
             temperature=0.0,
         )
         if "output" in response:
@@ -263,7 +280,7 @@ Example Response:
                            "Empty response content")
             return {f: "EMPTY" for f in fields}
 
-        content = content.strip()
+        content = clean_text_for_llm(content).strip()
         if content.startswith("```json"):
             content = content[7:]
         if content.startswith("```"):

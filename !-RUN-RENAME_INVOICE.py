@@ -38,6 +38,23 @@ Expected output example:
 2026-04-26 - KALUNGA COMÉRCIO E INDÚSTRIA - 345,90
 """
 
+def clean_text_for_llm(value: object) -> str:
+    """Normalize text to valid UTF-8 before sending it to the LLM."""
+    if value is None:
+        return ""
+
+    text = str(value)
+    text = text.replace("\ufeff", "")
+    text = text.replace("\x00", "")
+    text = text.encode("utf-8", errors="replace").decode("utf-8")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "".join(ch if ch.isprintable() or ch in "\n\t" else " " for ch in text)
+    text = re.sub(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]", " ", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def extract_pdf_text(file_path: str) -> str:
     """Extract text content from a PDF file."""
     text = ""
@@ -48,16 +65,17 @@ def extract_pdf_text(file_path: str) -> str:
                 text += page.extract_text() + "\n"
     except Exception as e:
         print(f"[-] Error reading PDF {file_path}: {e}")
-    return text.strip()
+    return clean_text_for_llm(text.strip())
 
 def generate_new_name(pdf_text: str) -> Optional[str]:
     """Generate a new file name using the local AI model via LM Studio."""
-    full_prompt = f"{INSTRUCTION_PROMPT}\n\nInvoice Text:\n{pdf_text}"
+    clean_pdf_text = clean_text_for_llm(pdf_text)
+    full_prompt = f"{clean_text_for_llm(INSTRUCTION_PROMPT)}\n\nInvoice Text:\n{clean_pdf_text}"
     try:
         # Call LM Studio's chat endpoint via the local client
         response: ChatResponse = client.chat(
-            system_prompt="You are a helpful assistant specialized in formatting filenames.",
-            input_data=full_prompt,
+            system_prompt=clean_text_for_llm("You are a helpful assistant specialized in formatting filenames."),
+            input_data=clean_text_for_llm(full_prompt),
             temperature=0.0,
         )
 
@@ -73,7 +91,7 @@ def generate_new_name(pdf_text: str) -> Optional[str]:
             print(f"[-] Error: no text content returned from model for file.")
             return None
 
-        new_name = content.strip()
+        new_name = clean_text_for_llm(content).strip()
         # Clear line breaks that the model might have accidentally returned
         new_name = new_name.replace('\n', '').replace('\r', '')
         

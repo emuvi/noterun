@@ -22,6 +22,24 @@ from PyQt5.QtWidgets import (QApplication, QLabel, QMainWindow, QVBoxLayout,
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
 
+
+def clean_text_for_llm(value: Any) -> str:
+    """Normalizes text to valid UTF-8 for LLM prompts and responses."""
+    if value is None:
+        return ""
+
+    text = str(value)
+    text = text.replace("\ufeff", "")
+    text = text.replace("\x00", "")
+    text = text.encode("utf-8", errors="replace").decode("utf-8")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "".join(ch if ch.isprintable() or ch in "\n\t" else " " for ch in text)
+    text = re.sub(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]", " ", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 # Initialize the LM Studio client pointing to the local LM Studio server.
 try:
     client = LMStd(base_url=os.environ.get("LMSTD_HOST", "http://localhost:1234"),
@@ -620,14 +638,15 @@ Example Response:
 
 ### DOCUMENT TEXT ###
 """
-        full_prompt = f"{master_prompt}\n{pdf_text}"
+        safe_pdf_text = clean_text_for_llm(pdf_text)
+        full_prompt = f"{master_prompt}\n{safe_pdf_text}"
 
         if client is None:
             raise ConnectionError("LM Studio client is not initialized.")
 
         response: ChatResponse = client.chat(
-            system_prompt="You are a helpful assistant specialized in extracting specific information from documents into JSON format. You only respond with raw, valid JSON.",
-            input_data=full_prompt,
+            system_prompt=clean_text_for_llm("You are a helpful assistant specialized in extracting specific information from documents into JSON format. You only respond with raw, valid JSON."),
+            input_data=clean_text_for_llm(full_prompt),
             temperature=0.0,
         )
         if "output" in response:

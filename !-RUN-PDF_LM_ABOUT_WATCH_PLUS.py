@@ -19,6 +19,27 @@ from PyPDF2.errors import PdfReadError
 event_chain: List[str] = []
 _failed_to_move_files = set()
 
+
+def clean_text_for_llm(value: Any) -> str:
+    """Normalizes text to valid UTF-8 for safe LLM prompts."""
+    if value is None:
+        return ""
+
+    text = str(value)
+    text = text.replace("\ufeff", "")
+    text = text.replace("\x00", "")
+    try:
+        text = text.encode("utf-8", errors="surrogatepass").decode("utf-8")
+    except Exception:
+        text = text.encode("utf-8", errors="replace").decode("utf-8")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "".join(ch if ch.isprintable() or ch in "\n\t" else " " for ch in text)
+    text = re.sub(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]", " ", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 # --- Visualization and Logging Helpers ---
 
 def get_current_time() -> str:
@@ -419,13 +440,14 @@ def build_summary_prompt(text: str) -> str:
     func_name = "build_summary_prompt"
     log_step(func_name, "Building prompt string...")
     try:
+        safe_text = clean_text_for_llm(text)
         prompt = (
             "Based on the following text extracted from a PDF, tell me what it is about "
             "in a maximum of 100 characters. Be concise and direct, providing only the summary "
             "without conversational filler. Do not use quotes or special characters that "
             "are invalid in filenames. Respond in the exact same language as the provided text, "
             "and ensure perfect spell checking on the language of the document.\n\n"
-            f"### TEXT ###\n{text}"
+            f"### TEXT ###\n{safe_text}"
         )
         log_success(func_name, "Prompt successfully built.")
         return prompt
@@ -451,9 +473,10 @@ def get_summary_from_llm(client: LMStd, prompt: str) -> Optional[str]:
         return None
 
     try:
+        clean_prompt = clean_text_for_llm(prompt)
         response: ChatResponse = client.chat(
             system_prompt="You are a helpful assistant that summarizes documents extremely concisely for filenames. Always respond in the same language as the input text and ensure perfect spelling.",
-            input_data=prompt,
+            input_data=clean_prompt,
             temperature=0.0
         )
         content: Optional[str] = None
@@ -464,7 +487,7 @@ def get_summary_from_llm(client: LMStd, prompt: str) -> Optional[str]:
                     break
 
         if content:
-            result = content.strip()
+            result = clean_text_for_llm(content).strip()
             log_success(func_name, f"LLM responded: '{result}'")
             return result
         else:
