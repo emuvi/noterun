@@ -12,7 +12,12 @@ def install_packages():
         "spacy",
         "langdetect",
         "playwright",
-        "Pillow"
+        "Pillow",
+        "pandas",
+        "fpdf2",
+        "openpyxl",
+        "xlrd",
+        "odfpy"
     ]
 
     spacy_models = [
