@@ -26,6 +26,10 @@ def export_to_pdf_pure_python(folder_path):
         file_path = os.path.join(folder_path, file)
         pdf_path = os.path.join(folder_path, os.path.splitext(file)[0] + ".pdf")
         
+        if os.path.exists(pdf_path):
+            print(f"\nPulando arquivo: {file} (PDF já existe)")
+            continue
+            
         print(f"\nProcessando arquivo: {file}")
         
         try:
