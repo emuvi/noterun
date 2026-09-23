@@ -3,6 +3,7 @@ import sys
 import pandas as pd
 from fpdf import FPDF
 from datetime import datetime
+import traceback
 
 # Constantes de configuração
 SUPPORTED_EXTENSIONS = ('.xls', '.xlsx', '.xlsm', '.ods', '.odf')
@@ -248,6 +249,25 @@ def process_single_file(folder_path, file_name):
         return True
     except Exception as e:
         print_log("🔴", "ERROR", "process_single_file", f"Failed to process {file_name}: {e}. Fix by validating file integrity and permissions.")
+        log_file_name = os.path.splitext(file_name)[0] + ".log"
+        log_path = os.path.join(folder_path, log_file_name)
+        try:
+            with open(log_path, "w", encoding="utf-8") as log_file:
+                log_file.write(f"--- Error Log for {file_name} ---\n")
+                log_file.write(f"Time: {get_current_time()}\n\n")
+                log_file.write("--- Error Details ---\n")
+                log_file.write(f"{traceback.format_exc()}\n")
+                log_file.write("--- Parameters Used ---\n")
+                log_file.write(f"folder_path: {folder_path}\n")
+                log_file.write(f"file_name: {file_name}\n")
+                log_file.write(f"MAX_COLUMN_WIDTH: {MAX_COLUMN_WIDTH}\n")
+                log_file.write(f"BASE_CHAR_WIDTH_MM: {BASE_CHAR_WIDTH_MM}\n")
+                log_file.write(f"CELL_MARGIN_MM: {CELL_MARGIN_MM}\n")
+                log_file.write(f"SUPPORTED_EXTENSIONS: {SUPPORTED_EXTENSIONS}\n")
+                log_file.write(f"FONT_ARIAL_REGULAR: {FONT_ARIAL_REGULAR}\n")
+                log_file.write(f"FONT_ARIAL_BOLD: {FONT_ARIAL_BOLD}\n")
+        except Exception as log_e:
+            print_log("🔴", "ERROR", "process_single_file", f"Failed to save error log for {file_name}: {log_e}")
         return False
 
 def main():
