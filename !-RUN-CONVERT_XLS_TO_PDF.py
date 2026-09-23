@@ -146,10 +146,34 @@ def calculate_sheet_dimensions(df, col_widths):
     print_log("🔹", "STEP", "calculate_sheet_dimensions", "Starting dimension calculation")
     try:
         total_width = sum(col_widths) + 20
-        total_height = (len(df) + 2) * 8 + 30
+        total_height = 30  # Title and margins
+        
+        # Calculate header height
+        header_lines = 1
+        for i, col in enumerate(df.columns):
+            text_w = len(str(col)) * BASE_CHAR_WIDTH_MM + CELL_MARGIN_MM
+            lines = int(text_w / col_widths[i]) + str(col).count('\n') + 1
+            if lines > header_lines:
+                header_lines = lines
+        total_height += (header_lines * 8) + 2
+        
+        # Calculate data rows height
+        for _, data_row in df.iterrows():
+            row_lines = 1
+            for i, item in enumerate(data_row):
+                val = "" if pd.isna(item) else str(item)
+                text_w = len(val) * BASE_CHAR_WIDTH_MM + CELL_MARGIN_MM
+                lines = int(text_w / col_widths[i]) + val.count('\n') + 1
+                if lines > row_lines:
+                    row_lines = lines
+            total_height += (row_lines * 8) + 2
         
         total_width = max(total_width, 100)
         total_height = max(total_height, 100)
+        
+        # Avoid exceeding maximum PDF page limits (~5080mm)
+        total_width = min(total_width, 5000)
+        total_height = min(total_height, 5000)
         
         print_log("✅", "SUCCESS", "calculate_sheet_dimensions", f"Completed: width={total_width}, height={total_height}")
         return total_width, total_height
@@ -187,7 +211,7 @@ def write_sheet_to_pdf(pdf, file_name, sheet_name, df, font_name):
         pdf.ln(5)
         
         pdf.set_font(font_name, size=10)
-        with pdf.table(col_widths=col_widths, text_align="LEFT", width=sum(col_widths)) as table:
+        with pdf.table(col_widths=col_widths, text_align="LEFT") as table:
             row = table.row()
             for col in df.columns:
                 row.cell(str(col))
