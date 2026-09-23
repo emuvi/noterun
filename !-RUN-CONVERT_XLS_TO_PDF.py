@@ -42,6 +42,9 @@ def get_col_widths(df):
         
     Returns:
         list: A list of column widths in mm.
+        
+    Raises:
+        Exception: If column width calculation fails due to incompatible data types.
     """
     print_log("🔹", "STEP", "get_col_widths", f"Starting with df of shape {df.shape}")
     widths = []
@@ -67,6 +70,9 @@ def get_excel_files(folder_path):
         
     Returns:
         list: A list of file names that match supported extensions.
+        
+    Raises:
+        Exception: If directory access fails or path is invalid.
     """
     print_log("🔹", "STEP", "get_excel_files", f"Starting search in {folder_path}")
     try:
@@ -86,6 +92,9 @@ def setup_fonts(pdf):
         
     Returns:
         str: The name of the font family selected.
+        
+    Raises:
+        Exception: If font file operations fail or FPDF encounters an error.
     """
     print_log("🔹", "STEP", "setup_fonts", "Starting font configuration")
     try:
@@ -107,6 +116,9 @@ def clean_column_names(df):
     
     Args:
         df (pd.DataFrame): The DataFrame to clean.
+        
+    Raises:
+        Exception: If DataFrame column names cannot be modified or accessed.
     """
     print_log("🔹", "STEP", "clean_column_names", "Starting to clean column names")
     try:
@@ -126,6 +138,9 @@ def calculate_sheet_dimensions(df, col_widths):
         
     Returns:
         tuple: (total_width, total_height) for the PDF page.
+        
+    Raises:
+        Exception: If calculations fail due to invalid width data or DataFrame length.
     """
     print_log("🔹", "STEP", "calculate_sheet_dimensions", "Starting dimension calculation")
     try:
@@ -151,6 +166,9 @@ def write_sheet_to_pdf(pdf, file_name, sheet_name, df, font_name):
         sheet_name (str): The name of the sheet being written.
         df (pd.DataFrame): The DataFrame contents.
         font_name (str): The font family to use.
+        
+    Raises:
+        Exception: If PDF operations fail, such as adding pages or drawing tables.
     """
     print_log("🔹", "STEP", "write_sheet_to_pdf", f"Starting write for sheet: {sheet_name}")
     try:
