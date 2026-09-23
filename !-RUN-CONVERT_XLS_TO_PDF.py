@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 from fpdf import FPDF
 from datetime import datetime
@@ -231,31 +232,33 @@ def process_single_file(folder_path, file_name):
         print_log("🔴", "ERROR", "process_single_file", f"Failed to process {file_name}: {e}. Fix by validating file integrity and permissions.")
         return False
 
-def export_to_pdf_pure_python(folder_path):
+def main():
     """
-    Main function to orchestrate the conversion of all Excel files in a folder to PDF.
+    Main orchestrator function for the PDF conversion script.
     
-    Args:
-        folder_path (str): The folder containing the files to convert.
+    Returns:
+        int: 0 on success, 1 on failure.
     """
-    print_log("🔹", "STEP", "export_to_pdf_pure_python", f"Starting conversion cycle in {folder_path}")
+    print_log("🔹", "STEP", "main", "Starting XLS to PDF Conversion Script")
+    folder_path = os.getcwd()
+    print_log("ℹ️", "LOG", "main", f"Resolved runtime context. Target directory: {folder_path}")
     
     try:
         files = get_excel_files(folder_path)
-    except Exception:
-        files = []
+    except Exception as e:
+        print_log("🔴", "ERROR", "main", f"Could not gather work items: {e}")
+        return 1
     
     if not files:
-        print_log("ℹ️", "LOG", "export_to_pdf_pure_python", "No spreadsheet files found.")
-        print_log("✅", "SUCCESS", "export_to_pdf_pure_python", "Completed cycle with 0 files.")
-        return
+        print_log("ℹ️", "LOG", "main", "No spreadsheet files found to process.")
+        return 0
         
     successes = 0
     failures = 0
     total = len(files)
 
     for i, file_name in enumerate(files, 1):
-        print_log("🔹", "STEP", "export_to_pdf_pure_python", f"Processing item {i} of {total}")
+        print_log("🔹", "STEP", "main", f"Processing item {i} of {total}")
         result = process_single_file(folder_path, file_name)
         if result:
             successes += 1
@@ -263,7 +266,7 @@ def export_to_pdf_pure_python(folder_path):
             failures += 1
 
     # End of cycle: Summary with totals
-    print_log("✅", "SUCCESS", "export_to_pdf_pure_python", f"Completed cycle. Successes: {successes}, Failures: {failures}")
+    print_log("✅", "SUCCESS", "main", f"Completed cycle. Successes: {successes}, Failures: {failures}")
 
     # Visual Summary Box
     box_width = 50
@@ -279,6 +282,10 @@ def export_to_pdf_pure_python(folder_path):
         f"╚{'═' * inner_width}╝"
     )
     print(summary_box)
+    
+    return 1 if failures > 0 else 0
 
 if __name__ == "__main__":
-    export_to_pdf_pure_python(os.getcwd())
+    exit_code = main()
+    input("\nPress Enter to exit...")
+    sys.exit(exit_code)
