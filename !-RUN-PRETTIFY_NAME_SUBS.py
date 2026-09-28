@@ -4,7 +4,8 @@
 import os
 import sys
 import re
-from typing import Optional
+import datetime
+from typing import Optional, Any, List, Tuple
 import spacy
 from langdetect import detect, LangDetectException
 
@@ -43,13 +44,62 @@ def get_nlp_model(text: str):
             
     return _nlp_models[model_name]
 
+def apply_incremental_abbreviation(text: str, nlp_model: Any, limit: int = 100, preserve_first: bool = True) -> str:
+    if len(text) <= limit:
+        return text
+
+    doc = nlp_model(text)
+    
+    pieces = []
+    candidates_by_phase = {1: [], 2: [], 3: [], 4: []}
+    
+    first_alpha_idx = -1
+    
+    for i, token in enumerate(doc):
+        word = token.text
+        has_alpha = any(c.isalpha() for c in word)
+        if has_alpha and first_alpha_idx == -1:
+            first_alpha_idx = i
+            
+        pieces.append({"text": word, "ws": token.whitespace_})
+        
+        is_candidate = has_alpha and len(word) > 2
+        if is_candidate and not (preserve_first and i == first_alpha_idx):
+            if token.pos_ in ["ADV"]:
+                candidates_by_phase[1].append(i)
+            if token.pos_ in ["ADJ", "VERB"]:
+                candidates_by_phase[2].append(i)
+            if token.pos_ in ["NOUN", "PROPN"]:
+                candidates_by_phase[3].append(i)
+            
+            if token.pos_ in ["ADV", "ADJ", "VERB", "NOUN", "PROPN"]:
+                candidates_by_phase[4].append(i)
+
+    def build_string():
+        return "".join(p["text"] + p["ws"] for p in pieces).strip()
+
+    current_text = build_string()
+    
+    for phase in range(1, 5):
+        if len(current_text) <= limit:
+            return current_text
+            
+        for i in reversed(candidates_by_phase[phase]):
+            if len(current_text) <= limit:
+                return current_text
+                
+            if len(pieces[i]["text"]) > 2:
+                pieces[i]["text"] = pieces[i]["text"][0] + "."
+                current_text = build_string()
+                
+    return current_text
+
 def prettify_name_logic(name: str) -> str:
     """
     Applies the prettification logic to a filename string.
-    1) If the word is a noun, adjective, or verb, it should have its first letter capitalized and all others lowercase.
-    2) If the word is an acronym, it should have all its letters in uppercase.
-    3) All other words should be in lowercase.
-    4) The first letter of the full filename must be capitalized.
+    1) If the word is a noun, verb, adjective or adverb, it should have its first letter capitalized and all others lowercase.
+    2) All other words should be in lowercase.
+    3) The first letter of the full filename must be capitalized.
     """
     # 1. CamelCase splitting: add space between lowercase/number and uppercase
     name = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', name)
@@ -75,16 +125,10 @@ def prettify_name_logic(name: str) -> str:
     result = ""
     for token in doc:
         word = token.text
-        original_word = original_text[token.idx : token.idx + len(word)]
         has_alpha = any(c.isalpha() for c in word)
 
-        if has_alpha:
-            if token.pos_ == "PROPN" and len(word) <= 4 and original_word.isupper():
-                word_fmt = original_word
-            elif token.pos_ in ["NOUN", "PROPN", "VERB", "AUX", "ADJ", "ADV"]:
-                word_fmt = word.capitalize()
-            else:
-                word_fmt = word.lower()
+        if has_alpha and token.pos_ in ["NOUN", "PROPN", "VERB", "ADJ", "ADV"]:
+            word_fmt = word.capitalize()
         else:
             word_fmt = word.lower()
 
@@ -98,6 +142,40 @@ def prettify_name_logic(name: str) -> str:
         
     return result
 
+def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, Optional[str]]:
+    """
+    Attempts to parse date/time prefix from the filename based on known formats.
+    """
+    formats = [
+        "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
+        "%Y-%m-%d %H:%M:%S", "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d",
+        "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
+        "%Y%m%d_%H%M%S", "%Y%m%d",
+        "%Y.%m.%d %H.%M", "%Y-%m-%d %H.%M", "%Y-%m-%d_%H.%M",
+        "%Y%m%d%H%M%S", "%Y%m%d%H%M"
+    ]
+    
+    for length in range(25, 7, -1):
+        if length > len(filename):
+            continue
+        prefix = filename[:length]
+        for fmt in formats:
+            try:
+                dt = datetime.datetime.strptime(prefix, fmt)
+                rest = filename[length:]
+                
+                if rest.startswith(' - '):
+                    return dt, rest[3:], fmt
+                elif rest.startswith('- ') or rest.startswith(' -'):
+                    return dt, rest[2:], fmt
+                elif rest.startswith(' ') or rest.startswith('-') or rest.startswith('_'):
+                    return dt, rest[1:], fmt
+                else:
+                    return dt, rest, fmt
+            except ValueError:
+                continue
+    return None, filename, None
+
 def generate_new_filename(filename: str) -> Optional[str]:
     """
     Generates the targeted prettified filename.
@@ -110,12 +188,29 @@ def generate_new_filename(filename: str) -> Optional[str]:
     """
     name_part, ext = os.path.splitext(filename)
     
-    prettified_name = prettify_name_logic(name_part)
+    dt, rest_of_name, fmt = parse_date_prefix(name_part)
+    
+    if dt:
+        prefix_len = len(name_part) - len(rest_of_name)
+        prefix = name_part[:prefix_len]
+        target_name = rest_of_name
+    else:
+        prefix = ""
+        target_name = name_part
+    
+    prettified_name = prettify_name_logic(target_name)
     
     if not prettified_name:
         return None
         
-    new_name = f"{prettified_name}{ext}"
+    if len(prettified_name) > 100:
+        nlp_model = get_nlp_model(prettified_name)
+        prettified_name = apply_incremental_abbreviation(prettified_name, nlp_model, 100)
+        
+    if len(prettified_name) > 120:
+        prettified_name = prettified_name[:120].strip()
+        
+    new_name = f"{prefix}{prettified_name}{ext}"
     
     if new_name == filename:
         return None
