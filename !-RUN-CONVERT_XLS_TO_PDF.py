@@ -247,7 +247,7 @@ def process_single_file(folder_path, file_name):
     if os.path.exists(pdf_path):
         print_log("ℹ️", "LOG", "process_single_file", f"Skipping {file_name} (PDF already exists)")
         print_log("✅", "SUCCESS", "process_single_file", f"Completed skipping {file_name}")
-        return True
+        return True, False
         
     try:
         sheets_dict = pd.read_excel(file_path, sheet_name=None)
@@ -266,11 +266,12 @@ def process_single_file(folder_path, file_name):
         if has_content:
             pdf.output(pdf_path)
             print_log("✅", "SUCCESS", "process_single_file", f"Completed saving: {os.path.basename(pdf_path)}")
+            return True, True
         else:
             print_log("ℹ️", "LOG", "process_single_file", f"File {file_name} didn't contain valid data in any sheet.")
             print_log("✅", "SUCCESS", "process_single_file", f"Completed processing empty file {file_name}")
+            return True, False
             
-        return True
     except Exception as e:
         print_log("🔴", "ERROR", "process_single_file", f"Failed to process {file_name}: {e}. Fix by validating file integrity and permissions.")
         log_file_name = os.path.splitext(file_name)[0] + ".log"
@@ -292,7 +293,7 @@ def process_single_file(folder_path, file_name):
                 log_file.write(f"FONT_ARIAL_BOLD: {FONT_ARIAL_BOLD}\n")
         except Exception as log_e:
             print_log("🔴", "ERROR", "process_single_file", f"Failed to save error log for {file_name}: {log_e}")
-        return False
+        return False, False
 
 def main():
     """
@@ -318,12 +319,15 @@ def main():
     successes = 0
     failures = 0
     total = len(files)
+    processed_files = []
 
     for i, file_name in enumerate(files, 1):
         print_log("🔹", "STEP", "main", f"Processing item {i} of {total}")
-        result = process_single_file(folder_path, file_name)
-        if result:
+        success, converted = process_single_file(folder_path, file_name)
+        if success:
             successes += 1
+            if converted:
+                processed_files.append(file_name)
         else:
             failures += 1
 
@@ -345,6 +349,17 @@ def main():
     )
     print(summary_box)
     
+    if processed_files:
+        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if ans.strip().lower() == 'y':
+            for file_name in processed_files:
+                file_path = os.path.join(folder_path, file_name)
+                try:
+                    os.remove(file_path)
+                    print(f"[+] Origin file deleted: {file_name}")
+                except Exception as e:
+                    print(f"[-] Error deleting {file_name}: {e}")
+
     return 1 if failures > 0 else 0
 
 if __name__ == "__main__":

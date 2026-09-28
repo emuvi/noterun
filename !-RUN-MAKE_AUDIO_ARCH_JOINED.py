@@ -60,6 +60,7 @@ def main():
 
     success_count = 0
     failure_count = 0
+    valid_source_files = []
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir_path = Path(temp_dir)
@@ -92,6 +93,7 @@ def main():
             try:
                 result = subprocess.run(cmd, check=True, capture_output=True, text=True)
                 valid_wav_files.append(temp_wav_name)
+                valid_source_files.append(file_path)
                 success_count += 1
             except subprocess.CalledProcessError as e:
                 print(f"[-] Error converting '{file_path.name}' to intermediate format: Subprocess failed with exit code {e.returncode}")
@@ -157,6 +159,16 @@ def main():
     if failure_count > 0:
         print(f"[-] Failed to process {failure_count} files (skipped in final archive).")
     
+    if valid_source_files:
+        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if ans.strip().lower() == 'y':
+            for fp in valid_source_files:
+                try:
+                    fp.unlink()
+                    print(f"[+] Arquivo de origem excluído: {fp.name}")
+                except Exception as e:
+                    print(f"[-] Erro ao excluir {fp.name}: {e}")
+
     return 0
 
 

@@ -365,6 +365,7 @@ def main():
     
     success_count = 0
     failure_count = 0
+    processed_files = []
     
     for i, filename in enumerate(lh_files, 1):
         print(f"{get_current_time()} 🔹 [STEP] main Processing item {i} of {total_files}")
@@ -374,6 +375,7 @@ def main():
         
         if success:
             success_count += 1
+            processed_files.append(filename)
             print(f"{get_current_time()} ✅ [SUCCESS] main File {filename} successfully converted")
         else:
             failure_count += 1
@@ -382,6 +384,16 @@ def main():
     print_summary_box(total_files, success_count, failure_count)
     print(f"{get_current_time()} ✅ [SUCCESS] main Completed directory processing")
     
+    if processed_files:
+        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if ans.strip().lower() == 'y':
+            for fp in processed_files:
+                try:
+                    os.remove(fp)
+                    print(f"[+] Arquivo de origem excluído: {fp}")
+                except Exception as e:
+                    print(f"[-] Erro ao excluir {fp}: {e}")
+
     return 1 if failure_count > 0 else 0
 
 if __name__ == '__main__':

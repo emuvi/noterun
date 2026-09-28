@@ -58,6 +58,7 @@ def main():
 
     success_count = 0
     failure_count = 0
+    processed_files = []
 
     for file_path in files_to_convert:
         output_file = file_path.with_name(f"{file_path.stem}.m4a")
@@ -89,6 +90,7 @@ def main():
                 cmd, check=True, capture_output=True, text=True)
             print(f"[+] Successfully converted '{output_file.name}'.")
             success_count += 1
+            processed_files.append(file_path)
         except subprocess.CalledProcessError as e:
             print(
                 f"[-] Error converting '{file_path.name}': Subprocess failed with exit code {e.returncode}")
@@ -111,10 +113,20 @@ def main():
 
     if failure_count > 0:
         print(f"[-] Failed conversions: {failure_count}")
-        return 1
     else:
         print("[+] All media files converted successfully!")
-        return 0
+
+    if processed_files:
+        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if ans.strip().lower() == 'y':
+            for fp in processed_files:
+                try:
+                    fp.unlink()
+                    print(f"[+] Arquivo de origem excluído: {fp.name}")
+                except Exception as e:
+                    print(f"[-] Erro ao excluir {fp.name}: {e}")
+
+    return 1 if failure_count > 0 else 0
 
 
 if __name__ == "__main__":

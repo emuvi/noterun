@@ -63,17 +63,8 @@ def verify_and_cleanup(filepath: str, part1_path: str, part2_path: str, filename
         print(f"[-] Splitting failed: Generated parts are empty.\n")
         return False
         
-    print(f"[+] Splitting verified. Deleting original file '{filename}'...")
-    try:
-        os.remove(filepath)
-        print(f"[+] Original file deleted successfully.\n")
-        return True
-    except OSError as e:
-        print(f"[-] OS Error: Could not delete original file '{filename}': {e}\n")
-    except Exception as e:
-        print(f"[-] Unexpected error while deleting original file '{filename}': {e}\n")
-        
-    return False
+    print(f"[+] Splitting verified. Original file '{filename}' kept for now.\n")
+    return True
 
 def execute_ffmpeg_split(filepath: str, target_path: str, duration_args: list, part_name: str) -> bool:
     """
@@ -150,7 +141,7 @@ def split_media_file(filepath: str, directory: str, filename: str, duration: flo
     # Verify and cleanup
     return verify_and_cleanup(filepath, part1_path, part2_path, filename)
 
-def process_file(filepath: str, directory: str, filename: str) -> bool:
+def process_file(filepath: str, directory: str, filename: str) -> tuple:
     """
     Checks the file size and triggers splitting if the size exceeds MAX_SIZE.
     
@@ -160,13 +151,13 @@ def process_file(filepath: str, directory: str, filename: str) -> bool:
         filename (str): Name of the file.
         
     Returns:
-        bool: True if processed successfully or skipped naturally, False on error.
+        tuple: (bool: success, bool: splitted)
     """
     try:
         size = os.path.getsize(filepath)
     except OSError as e:
         print(f"[-] OS Error: Could not retrieve size for '{filename}': {e}")
-        return False
+        return False, False
 
     if size > MAX_SIZE:
         size_mb = size / (1024 * 1024)
@@ -174,12 +165,12 @@ def process_file(filepath: str, directory: str, filename: str) -> bool:
         
         duration = get_duration(filepath)
         if duration:
-            return split_media_file(filepath, directory, filename, duration)
+            return split_media_file(filepath, directory, filename, duration), True
         else:
             print(f"[-] Skipping '{filename}' due to duration retrieval failure.\n")
-            return False
+            return False, False
             
-    return True
+    return True, False
 
 def filter_media_files(directory: str) -> list:
     """
@@ -240,11 +231,15 @@ def main():
     
     success_count = 0
     failure_count = 0
+    processed_files = []
     
     for filename in media_files:
         filepath = os.path.join(script_dir, filename)
-        if process_file(filepath, script_dir, filename):
+        success, splitted = process_file(filepath, script_dir, filename)
+        if success:
             success_count += 1
+            if splitted:
+                processed_files.append(filepath)
         else:
             failure_count += 1
             
@@ -254,10 +249,20 @@ def main():
     
     if failure_count > 0:
         print(f"[-] Errors encountered during processing: {failure_count}")
-        return 1
     else:
         print("[+] All files processed without errors!")
-        return 0
+
+    if processed_files:
+        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if ans.strip().lower() == 'y':
+            for fp in processed_files:
+                try:
+                    os.remove(fp)
+                    print(f"[+] Arquivo de origem excluído: {os.path.basename(fp)}")
+                except Exception as e:
+                    print(f"[-] Erro ao excluir {os.path.basename(fp)}: {e}")
+
+    return 1 if failure_count > 0 else 0
 
 if __name__ == '__main__':
     exit_code = main()

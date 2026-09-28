@@ -7,6 +7,7 @@ from PyPDF2 import PdfMerger
 
 async def html_to_pdfs(html_files, temp_dir):
     pdf_paths = []
+    successful_html_files = []
 
     # Start headless browser
     async with async_playwright() as p:
@@ -33,13 +34,14 @@ async def html_to_pdfs(html_files, temp_dir):
                 # Print page to PDF (print_background=True ensures CSS backgrounds/images show up)
                 await page.pdf(path=str(pdf_path), format="A3", print_background=False)
                 pdf_paths.append(pdf_path)
+                successful_html_files.append(file_path)
     
                 print(f"  [{idx + 1}/{total_files}] Converted: {file_path.relative_to(Path.cwd())}")
             except Exception as e:
                 print(f"  [X] ERROR: Failed to convert {file_path.relative_to(Path.cwd())}. Reason: {e}")
 
         await browser.close()
-        return pdf_paths
+        return pdf_paths, successful_html_files
 
 
 def main():
@@ -66,7 +68,7 @@ def main():
 
     # 3. Convert each file to PDF
     print("\n--- STEP 2: CONVERTING HTML TO PDF ---")
-    pdf_files = asyncio.run(html_to_pdfs(html_files, temp_folder))
+    pdf_files, successful_html_files = asyncio.run(html_to_pdfs(html_files, temp_folder))
 
     # 4. Join all PDFs into a single PDF
     print("\n--- STEP 3: MERGING PDFs ---")
@@ -88,6 +90,16 @@ def main():
     shutil.rmtree(temp_folder)
     
     print("\n*** SUCCESS! ALL DONE! ***")
+
+    if successful_html_files:
+        ans = input("\nDo you want to delete the origin files HTML? (Y/N): ")
+        if ans.strip().lower() == 'y':
+            for fp in successful_html_files:
+                try:
+                    fp.unlink()
+                    print(f"[+] Origin file deleted: {fp.name}")
+                except Exception as e:
+                    print(f"[-] Error deleting {fp.name}: {e}")
 
 
 if __name__ == "__main__":

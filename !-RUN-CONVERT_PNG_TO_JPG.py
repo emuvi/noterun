@@ -5,7 +5,7 @@ import os
 import sys
 from PIL import Image
 
-def convert_image(filepath: str, directory: str, filename: str) -> bool:
+def convert_image(filepath: str, directory: str, filename: str) -> tuple:
     """
     Handles the operation to convert a single PNG file to JPG.
     """
@@ -16,7 +16,7 @@ def convert_image(filepath: str, directory: str, filename: str) -> bool:
         print(f"[*] Skipping file...")
         print(f"    File: '{filename}'")
         print(f"    Reason: Target '{jpg_filename}' already exists\n")
-        return True
+        return True, False
 
     try:
         print(f"[*] Converting file...")
@@ -32,7 +32,7 @@ def convert_image(filepath: str, directory: str, filename: str) -> bool:
         # Save as JPG
         rgb_im.save(jpg_path, quality=95)
         print(f"[+] Successfully converted '{filename}'.\n")
-        return True
+        return True, True
         
     except PermissionError as e:
         print(f"[-] Permission Denied converting '{filename}': {e}\n")
@@ -41,7 +41,7 @@ def convert_image(filepath: str, directory: str, filename: str) -> bool:
     except Exception as e:
         print(f"[-] Unexpected error converting '{filename}': {e}\n")
         
-    return False
+    return False, False
 
 def filter_eligible_files(directory: str) -> list:
     """
@@ -93,11 +93,15 @@ def main():
     
     success_count = 0
     failure_count = 0
+    processed_files = []
     
     for filename in files_to_process:
         filepath = os.path.join(script_dir, filename)
-        if convert_image(filepath, script_dir, filename):
+        success, converted = convert_image(filepath, script_dir, filename)
+        if success:
             success_count += 1
+            if converted:
+                processed_files.append(filepath)
         else:
             failure_count += 1
             
@@ -107,10 +111,20 @@ def main():
     
     if failure_count > 0:
         print(f"[-] Errors encountered: {failure_count}")
-        return 1
     else:
         print("[+] All files processed without errors!")
-        return 0
+
+    if processed_files:
+        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if ans.strip().lower() == 'y':
+            for fp in processed_files:
+                try:
+                    os.remove(fp)
+                    print(f"[+] Origin file deleted: {os.path.basename(fp)}")
+                except Exception as e:
+                    print(f"[-] Error deleting {os.path.basename(fp)}: {e}")
+
+    return 1 if failure_count > 0 else 0
 
 if __name__ == '__main__':
     exit_code = main()
