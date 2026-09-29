@@ -46,6 +46,17 @@ def normalize_pdf_text(text):
     text = text.replace("\u00ad", "").replace("\ufffd", " ")
     text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
     result = re.sub(r"\s+", " ", text).strip()
+    
+    def replacer(match):
+        s = match.group(0)
+        num_part = match.group(2)
+        clean_num = re.sub(r"\s+", "", num_part)
+        if len(clean_num) == 7:
+            return match.group(1) + clean_num + match.group(3)
+        return s
+        
+    result = re.sub(r"(^|\bDemanda\s+|\bItem\s+de\s+Trabalho\s+)(\d[\d\s]{5,13}\d)(\s*:|\b)", replacer, result, flags=re.IGNORECASE)
+
     print(f"{get_current_time()} ✅ [SUCCESS] [normalize_pdf_text] Completed normalisation. New length: {len(result)}")
     return result
 
@@ -900,21 +911,21 @@ def main():
     print(summary)
     
     if error_reports:
-        report_filename = current_dir / f"RENAME_ERROR_REPORT_{datetime.now().strftime('%Y.%m.%d-%H.%M')}.txt"
-        try:
-            with open(report_filename, "w", encoding="utf-8") as f:
-                f.write("═"*80 + "\n")
-                f.write(" " * 28 + "DETAILED ERROR REPORT\n")
-                f.write("═"*80 + "\n")
-                for fname, out in error_reports:
+        for fname, out in error_reports:
+            log_filename = current_dir / Path(fname).with_suffix('.log').name
+            try:
+                with open(log_filename, "w", encoding="utf-8") as f:
+                    f.write("═"*80 + "\n")
+                    f.write(" " * 28 + "DETAILED ERROR REPORT\n")
+                    f.write("═"*80 + "\n")
                     f.write(f"\n[FILE]: {fname}\n")
                     f.write("-" * 80 + "\n")
                     f.write(out.strip() + "\n")
                     f.write("-" * 80 + "\n")
-                f.write("═"*80 + "\n")
-            print(f"\n{get_current_time()} ℹ️ [LOG] Relatório de erros salvo em: {report_filename.name}")
-        except Exception as e:
-            print(f"\n{get_current_time()} 🔴 [ERROR] Falha ao salvar o relatório de erros: {e}")
+                    f.write("═"*80 + "\n")
+                print(f"\n{get_current_time()} ℹ️ [LOG] Relatório de erros salvo em: {log_filename.name}")
+            except Exception as e:
+                print(f"\n{get_current_time()} 🔴 [ERROR] Falha ao salvar o relatório de erros para {fname}: {e}")
         
     return 1 if error_reports else 0
 
