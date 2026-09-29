@@ -10,6 +10,7 @@ def install_packages():
         "lmstd",
         "click",
         "spacy",
+        "pyperclip",
         "langdetect",
         "playwright",
         "Pillow",
