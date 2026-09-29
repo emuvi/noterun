@@ -46,7 +46,7 @@ def collect_latest_demands(directory):
         if current is None or parsed_timestamp >= current[0]:
             latest_by_number[number] = record
 
-    return sorted(latest_by_number.values(), key=lambda record: (record[0], record[2]))
+    return sorted(latest_by_number.values(), key=lambda record: (record[0], record[2]), reverse=True)
 
 
 def write_report(directory, demands):
