@@ -64,10 +64,10 @@ def install_packages():
             subprocess.check_call(
                 [sys.executable, "-m", "spacy", "download", model])
             print(f"Success: '{model}' downloaded and installed correctly.")
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             print(
                 f"\nERROR: Failed to download spacy model '{model}'. Details: {e}")
-            return False
+            continue
 
     # Install Playwright browsers
     try:
