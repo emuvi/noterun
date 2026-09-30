@@ -5,6 +5,7 @@ import sys
 def install_packages():
     """Install required Python packages and spacy models from the internet."""
     packages = [
+        "pip-system-certs",
         "PyQt5",
         "PyPDF2",
         "lmstd",
