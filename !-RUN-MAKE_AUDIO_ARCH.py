@@ -6,6 +6,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+# ==============================================================================
+# GLOBAL CONFIGURATION
+# ==============================================================================
+# Determines whether to delete origin files after processing.
+# True  -> Deletes the files automatically without asking.
+# False -> Keeps the files without asking.
+# None  -> Prompts the user to decide.
+DELETE_ORIGIN_FILES = None
+# ==============================================================================
+
 
 def main():
     """
@@ -117,7 +127,13 @@ def main():
         print("[+] All media files converted successfully!")
 
     if processed_files:
-        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if DELETE_ORIGIN_FILES is True:
+            ans = 'y'
+        elif DELETE_ORIGIN_FILES is False:
+            ans = 'n'
+        else:
+            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            
         if ans.strip().lower() == 'y':
             for fp in processed_files:
                 try:

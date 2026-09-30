@@ -15,6 +15,12 @@ MAX_SIZE_MB = 20
 # Percentual alvo do tamanho máximo que cada arquivo deve atingir (ex: 0.95 = 95%).
 # O script adicionará mais páginas continuamente até chegar nesse percentual.
 TARGET_PERCENTAGE = 0.95
+
+# Determines whether to delete origin files after processing.
+# True  -> Deletes the files automatically without asking.
+# False -> Keeps the files without asking.
+# None  -> Prompts the user to decide.
+DELETE_ORIGIN_FILES = None
 # ==============================================================================
 
 def process_pdf(filepath: str, directory: str, filename: str) -> bool:
@@ -224,7 +230,13 @@ def main():
         print("[+] Process finished without errors!")
 
     if processed_files:
-        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if DELETE_ORIGIN_FILES is True:
+            ans = 'y'
+        elif DELETE_ORIGIN_FILES is False:
+            ans = 'n'
+        else:
+            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            
         if ans.strip().lower() == 'y':
             for fp in processed_files:
                 try:

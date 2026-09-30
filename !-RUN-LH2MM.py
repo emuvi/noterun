@@ -6,6 +6,16 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from datetime import datetime
 
+# ==============================================================================
+# GLOBAL CONFIGURATION
+# ==============================================================================
+# Determines whether to delete origin files after processing.
+# True  -> Deletes the files automatically without asking.
+# False -> Keeps the files without asking.
+# None  -> Prompts the user to decide.
+DELETE_ORIGIN_FILES = None
+# ==============================================================================
+
 def get_current_time():
     """
     Returns the current time formatted as [HH:MM:SS] for logging purposes.
@@ -385,7 +395,13 @@ def main():
     print(f"{get_current_time()} ✅ [SUCCESS] main Completed directory processing")
     
     if processed_files:
-        ans = input("\nDo you want to delete the origin files? (Y/N): ")
+        if DELETE_ORIGIN_FILES is True:
+            ans = 'y'
+        elif DELETE_ORIGIN_FILES is False:
+            ans = 'n'
+        else:
+            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            
         if ans.strip().lower() == 'y':
             for fp in processed_files:
                 try:

@@ -4,6 +4,16 @@ import asyncio
 from playwright.async_api import async_playwright
 from PyPDF2 import PdfMerger
 
+# ==============================================================================
+# GLOBAL CONFIGURATION
+# ==============================================================================
+# Determines whether to delete origin files after processing.
+# True  -> Deletes the files automatically without asking.
+# False -> Keeps the files without asking.
+# None  -> Prompts the user to decide.
+DELETE_ORIGIN_FILES = None
+# ==============================================================================
+
 
 async def html_to_pdfs(html_files, temp_dir):
     pdf_paths = []
@@ -92,7 +102,13 @@ def main():
     print("\n*** SUCCESS! ALL DONE! ***")
 
     if successful_html_files:
-        ans = input("\nDo you want to delete the origin files HTML? (Y/N): ")
+        if DELETE_ORIGIN_FILES is True:
+            ans = 'y'
+        elif DELETE_ORIGIN_FILES is False:
+            ans = 'n'
+        else:
+            ans = input("\nDo you want to delete the origin files HTML? (Y/N): ")
+            
         if ans.strip().lower() == 'y':
             for fp in successful_html_files:
                 try:
