@@ -5,9 +5,8 @@ import sys
 def install_packages():
     """Install required Python packages and spacy models from the internet."""
     packages = [
-        "pip-system-certs",
         "PyQt5",
-        "PyPDF2",
+        "pypdf",
         "lmstd",
         "click",
         "spacy",
@@ -19,7 +18,8 @@ def install_packages():
         "fpdf2",
         "openpyxl",
         "xlrd",
-        "odfpy"
+        "odfpy",
+        "pip-system-certs"
     ]
 
     spacy_models = [

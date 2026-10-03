@@ -8,7 +8,7 @@ import unicodedata
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-import PyPDF2
+import pypdf
 from lmstd import ChatResponse, LMStd
 
 # Global event chain to track execution trace for each file
@@ -220,14 +220,14 @@ def get_classify_prompt(parent_dir: str, current_dir: str) -> str:
 
 def extract_pdf_text(file_path: str) -> str:
     """
-    Extracts text content from a PDF file using PyPDF2.
+    Extracts text content from a PDF file using pypdf.
     Handles extraction logic for large files gracefully.
     """
     print_step(f"Extract PDF Text: Opening file '{file_path}'.")
     text = ""
     try:
         with open(file_path, 'rb') as pdf_file:
-            reader = PyPDF2.PdfReader(pdf_file)
+            reader = pypdf.PdfReader(pdf_file)
             total_pages = len(reader.pages)
 
             print_step(

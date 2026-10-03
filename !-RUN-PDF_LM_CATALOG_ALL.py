@@ -10,7 +10,7 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-import PyPDF2
+import pypdf
 import spacy
 from langdetect import detect
 from lmstd import ChatResponse, ListModelsResponse, LMStd
@@ -193,12 +193,12 @@ Rules: Exclude dates, volumes, or publishers. Return EMPTY if none."""
 
 
 def extract_pdf_text(file_path: str) -> str:
-    """Extracts text content from a PDF file using PyPDF2."""
+    """Extracts text content from a PDF file using pypdf."""
     text = ""
     try:
         log_step("Extracting PDF text")
         with open(file_path, 'rb') as pdf_file:
-            reader = PyPDF2.PdfReader(pdf_file)
+            reader = pypdf.PdfReader(pdf_file)
             total_pages = len(reader.pages)
 
             if total_pages > 33:

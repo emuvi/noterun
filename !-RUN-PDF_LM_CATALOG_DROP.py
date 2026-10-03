@@ -10,7 +10,7 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-import PyPDF2
+import pypdf
 import spacy
 from langdetect import detect
 from lmstd import ChatResponse, ListModelsResponse, LMStd
@@ -542,7 +542,7 @@ def get_pages_to_extract(total_pages: int) -> List[int]:
         return []
 
 
-def extract_text_from_pages(reader: PyPDF2.PdfReader, pages_to_extract: List[int]) -> str:
+def extract_text_from_pages(reader: pypdf.PdfReader, pages_to_extract: List[int]) -> str:
     """Extracts text from specified pages of a PDF reader object."""
     total = len(pages_to_extract)
     print_step(f"Starting extraction cycle for {total} selected pages.")
@@ -582,8 +582,8 @@ def extract_pdf_text(file_path: str) -> str:
         print_step(f"Opening file '{file_path}' in binary read mode.")
         with open(file_path, 'rb') as pdf_file:
             print_success("File opened successfully.")
-            print_step("Initializing PyPDF2 PdfReader.")
-            reader = PyPDF2.PdfReader(pdf_file)
+            print_step("Initializing pypdf PdfReader.")
+            reader = pypdf.PdfReader(pdf_file)
             total_pages = len(reader.pages)
             print_success(
                 f"PDF reader initialized successfully. Total pages found: {total_pages}.")

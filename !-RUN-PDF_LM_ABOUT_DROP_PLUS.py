@@ -7,7 +7,7 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import PyPDF2
+import pypdf
 import spacy
 from langdetect import detect
 from lmstd import ChatResponse, LMStd
@@ -418,12 +418,12 @@ def get_pages_to_extract(total_pages: int) -> List[int]:
         return []
 
 
-def extract_text_from_pages(reader: PyPDF2.PdfReader, pages_to_extract: List[int]) -> str:
+def extract_text_from_pages(reader: pypdf.PdfReader, pages_to_extract: List[int]) -> str:
     """
     Extracts text from specified pages of a PDF reader object.
 
     Args:
-        reader (PyPDF2.PdfReader): The PyPDF2 reader instance.
+        reader (pypdf.PdfReader): The pypdf reader instance.
         pages_to_extract (List[int]): The specific page indices to extract.
 
     Returns:
@@ -473,8 +473,8 @@ def extract_pdf_text(file_path: str) -> str:
         with open(file_path, 'rb') as pdf_file:
             log_success(func_name, "File opened successfully.")
 
-            log_step(func_name, "Initializing PyPDF2 PdfReader.")
-            reader = PyPDF2.PdfReader(pdf_file)
+            log_step(func_name, "Initializing pypdf PdfReader.")
+            reader = pypdf.PdfReader(pdf_file)
             total_pages = len(reader.pages)
             log_success(func_name, f"PDF reader initialized successfully. Total pages found: {total_pages}.")
 

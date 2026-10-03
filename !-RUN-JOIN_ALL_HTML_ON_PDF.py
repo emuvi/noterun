@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 import asyncio
 from playwright.async_api import async_playwright
-from PyPDF2 import PdfMerger
+from pypdf import PdfMerger
 
 # ==============================================================================
 # GLOBAL CONFIGURATION

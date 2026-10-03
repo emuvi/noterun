@@ -4,7 +4,7 @@
 import os
 import sys
 import io
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 # ==============================================================================
 # CONFIGURAÇÕES (Settings)

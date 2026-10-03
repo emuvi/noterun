@@ -4,7 +4,7 @@
 import os
 import sys
 import re
-import PyPDF2
+import pypdf
 from typing import Optional
 from lmstd import LMStd, ChatResponse, ListModelsResponse
 
@@ -60,7 +60,7 @@ def extract_pdf_text(file_path: str) -> str:
     text = ""
     try:
         with open(file_path, 'rb') as pdf_file:
-            reader = PyPDF2.PdfReader(pdf_file)
+            reader = pypdf.PdfReader(pdf_file)
             for page in reader.pages:
                 text += page.extract_text() + "\n"
     except Exception as e:

@@ -9,11 +9,11 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import PyPDF2
+import pypdf
 import spacy
 from langdetect import detect
 from lmstd import ChatResponse, LMStd
-from PyPDF2.errors import PdfReadError
+from pypdf.errors import PdfReadError
 
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
@@ -378,7 +378,7 @@ def get_pages_to_extract(total_pages: int) -> List[int]:
 
 def extract_pdf_text(file_path: str) -> str:
     """
-    Extracts text content from a PDF file using PyPDF2.
+    Extracts text content from a PDF file using pypdf.
     Treats specific errors during reading or parsing.
 
     Args:
@@ -396,7 +396,7 @@ def extract_pdf_text(file_path: str) -> str:
 
         with open(file_path, 'rb') as pdf_file:
             log_step(func_name, "Reading PDF file structure.")
-            reader = PyPDF2.PdfReader(pdf_file)
+            reader = pypdf.PdfReader(pdf_file)
             total_pages = len(reader.pages)
             pages_to_extract = get_pages_to_extract(total_pages)
 
