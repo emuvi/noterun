@@ -19,6 +19,9 @@ from PyPDF2.errors import PdfReadError
 event_chain: List[str] = []
 _failed_to_move_files = set()
 
+# When True, files whose names start with "RAND" are skipped
+CHECK_RAND_PREFIX: bool = False
+
 
 def clean_text_for_llm(value: Any) -> str:
     """Normalizes text to valid UTF-8 for safe LLM prompts."""
@@ -723,7 +726,7 @@ def get_files_to_process() -> List[str]:
         pdf_files = sorted(glob.glob("*.pdf"))
         files_to_process = []
         for f in pdf_files:
-            if f.upper().startswith("RAND"):
+            if CHECK_RAND_PREFIX and f.upper().startswith("RAND"):
                 continue
             if "~" in f:
                 continue
@@ -817,7 +820,8 @@ def main() -> None:
     current_dir = os.getcwd()
 
     print("==========================================================================================")
-    print("This script will continuously monitor the current folder for new PDF files (excluding 'RAND*' and files with '~')")
+    rand_note = "'RAND*' and " if CHECK_RAND_PREFIX else ""
+    print(f"This script will continuously monitor the current folder for new PDF files (excluding {rand_note}files with '~')")
     print("to append a summary to their filename (and their sidecar files).")
     print("==========================================================================================")
 

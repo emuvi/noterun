@@ -14,6 +14,9 @@ from lmstd import ChatResponse, LMStd
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
 
+# When True, files whose names start with "RAND" are skipped
+CHECK_RAND_PREFIX: bool = False
+
 
 def clean_text_for_llm(value: Any) -> str:
     """Normalizes text to valid UTF-8 before sending it to the LLM."""
@@ -547,7 +550,7 @@ def process_all_pdfs() -> None:
         pdf_files = sorted(glob.glob("*.pdf"))
         files_to_process = []
         for f in pdf_files:
-            if f.upper().startswith("RAND"):
+            if CHECK_RAND_PREFIX and f.upper().startswith("RAND"):
                 continue
             files_to_process.append(f)
 

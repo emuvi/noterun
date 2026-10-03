@@ -14,6 +14,9 @@ from lmstd import ChatResponse, LMStd
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
 
+# When True, files whose names start with "RAND" are skipped
+CHECK_RAND_PREFIX: bool = False
+
 
 def clean_text_for_llm(value: Any) -> str:
     """Normalizes text to valid UTF-8 before sending it to the LLM."""
@@ -515,7 +518,8 @@ def main() -> None:
         log_message("Could not generate instruction prompt. Aborting.")
         return
 
-    print("\nThis script will continuously monitor the current folder for new PDF files (excluding 'RAND*') to classify and move.")
+    rand_note = " (excluding 'RAND*')" if CHECK_RAND_PREFIX else ""
+    print(f"\nThis script will continuously monitor the current folder for new PDF files{rand_note} to classify and move.")
     print("It will classify files into the subfolders of the parent directory.")
 
     log_message(
@@ -535,7 +539,7 @@ def main() -> None:
                 pdf_files = sorted(glob.glob("*.pdf"))
                 files_to_process = []
                 for f in pdf_files:
-                    if f.upper().startswith("RAND"):
+                    if CHECK_RAND_PREFIX and f.upper().startswith("RAND"):
                         continue
                     if f in _failed_to_move_files:
                         continue

@@ -22,6 +22,9 @@ event_chain: List[str] = []
 nlp_models_cache: Dict[str, Any] = {}
 _failed_to_move_files = set()
 
+# When True, only files whose names start with "RAND " are processed
+CHECK_RAND_PREFIX: bool = False
+
 
 def clean_text_for_llm(value: Any) -> str:
     """Normalizes text to valid UTF-8 for LLM prompts and responses."""
@@ -556,7 +559,7 @@ def should_process(file_name: str) -> bool:
     """Checks if the file meets the criteria to be processed."""
     try:
         log_step("Checking if file should be processed")
-        if not file_name.startswith("RAND "):
+        if CHECK_RAND_PREFIX and not file_name.startswith("RAND "):
             log_step_success("Checking if file should be processed",
                              "False: Does not start with RAND")
             return False
@@ -655,7 +658,8 @@ def get_files_to_process(current_dir: str) -> List[str]:
         log_step("Scanning for PDF files")
         pdf_files = glob.glob(os.path.join(current_dir, "*.pdf"))
         files_to_process = [os.path.basename(
-            f) for f in pdf_files if os.path.basename(f).startswith("RAND ")]
+            f) for f in pdf_files
+            if not CHECK_RAND_PREFIX or os.path.basename(f).startswith("RAND ")]
         files_to_process = sorted(
             [f for f in files_to_process if f not in _failed_to_move_files])
         log_step_success("Scanning for PDF files",
