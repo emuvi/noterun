@@ -40,6 +40,18 @@ def clean_text_for_llm(value: Any) -> str:
     return text.strip()
 
 
+def capitalize_first_letter(text: str) -> str:
+    """Ensures the first alphabetic character starting a word in text is upper case."""
+    if not text or text.upper() == "EMPTY":
+        return text
+    for i, ch in enumerate(text):
+        if ch.isalpha():
+            if i == 0 or not text[i - 1].isalnum():
+                return text[:i] + ch.upper() + text[i + 1:]
+            break
+    return text
+
+
 # Initialize the LM Studio client pointing to the local LM Studio server.
 try:
     client = LMStd(base_url=os.environ.get("LMSTD_HOST", "http://localhost:1234"),
@@ -224,17 +236,19 @@ def abbreviate_words(text: str, nlp_model: Any, target_pos: List[str], preserve_
                 is_candidate = False
                 first_alpha_seen = True
             if is_candidate:
-                out += word[0] + "." + token.whitespace_
+                out += word[0].upper() + "." + token.whitespace_
             else:
                 out += word + token.whitespace_
 
         res = out.strip()
+        if res:
+            res = capitalize_first_letter(res)
         print_success(
             f"[Abbreviate Words] Abbreviated result length: {len(res)}")
         return res
     except Exception as e:
         print_error(f"[Abbreviate Words] Failed to abbreviate words: {e}")
-        return text
+        return capitalize_first_letter(text) if text else text
 
 # --- Catalog Specific NLP ---
 
@@ -250,7 +264,7 @@ def format_author(text: str, nlp_model: Any) -> str:
 
         if " " not in text and text.isupper():
             print_success("Formatting author: Acronym detected")
-            return text
+            return capitalize_first_letter(text)
 
         parts = text.split()
         if len(parts) == 1:
@@ -276,11 +290,12 @@ def format_author(text: str, nlp_model: Any) -> str:
         else:
             res = last_name
 
+        res = capitalize_first_letter(res)
         print_success(f"Formatting author: Result: {res}")
         return res
     except Exception as e:
         print_error(f"Formatting author failed: {e}")
-        return text
+        return capitalize_first_letter(text) if text else text
 
 
 def format_title_case_nlp(text: str, nlp_model: Any) -> str:
@@ -317,11 +332,13 @@ def format_title_case_nlp(text: str, nlp_model: Any) -> str:
             result += word_fmt + token.whitespace_
 
         res = result.strip()
+        if res:
+            res = capitalize_first_letter(res)
         print_success("Formatting title case completed")
         return res
     except Exception as e:
         print_error(f"Formatting title case failed: {e}")
-        return text
+        return capitalize_first_letter(text) if text else text
 
 
 def assemble_filename(author: str, series: str, volume: str, title: str, subtitle: str, edition: str, nlp_model: Any) -> str:
@@ -673,11 +690,17 @@ Example Response:
 
         result = {}
         for field in fields:
-            val = extracted_data.get(field, "EMPTY")
+            val = extracted_data.get(field)
+            if val is None and isinstance(extracted_data, dict):
+                val = next((v for k, v in extracted_data.items() if k.lower() == field.lower()), "EMPTY")
+            if val is None:
+                val = "EMPTY"
             if not isinstance(val, str):
                 val = str(val)
             val = val.strip().replace('\n', ' ').replace('\r', '')
             val = val.strip('"').strip("'")
+            if val and val.upper() != "EMPTY":
+                val = capitalize_first_letter(val)
             result[field] = val if val else "EMPTY"
 
         print_success("Successfully queried AI model for fields")
@@ -967,18 +990,18 @@ class DropZone(QLabel):
                                       session_total, self.session_success_count, self.session_fail_count)
                     return
 
-                fmt_author = format_author(
-                    extracted_data["Author"], current_nlp)
-                fmt_series = format_title_case_nlp(
-                    extracted_data["Series"], current_nlp)
-                fmt_volume = format_title_case_nlp(
-                    extracted_data["Volume"], current_nlp)
-                fmt_title = format_title_case_nlp(
-                    extracted_data["Title"], current_nlp)
-                fmt_subtitle = format_title_case_nlp(
-                    extracted_data["Subtitle"], current_nlp)
-                fmt_edition = format_title_case_nlp(
-                    extracted_data["Edition"], current_nlp)
+                fmt_author = capitalize_first_letter(format_author(
+                    extracted_data["Author"], current_nlp))
+                fmt_series = capitalize_first_letter(format_title_case_nlp(
+                    extracted_data["Series"], current_nlp))
+                fmt_volume = capitalize_first_letter(format_title_case_nlp(
+                    extracted_data["Volume"], current_nlp))
+                fmt_title = capitalize_first_letter(format_title_case_nlp(
+                    extracted_data["Title"], current_nlp))
+                fmt_subtitle = capitalize_first_letter(format_title_case_nlp(
+                    extracted_data["Subtitle"], current_nlp))
+                fmt_edition = capitalize_first_letter(format_title_case_nlp(
+                    extracted_data["Edition"], current_nlp))
 
                 if not fmt_title:
                     fmt_title = "No Title"
