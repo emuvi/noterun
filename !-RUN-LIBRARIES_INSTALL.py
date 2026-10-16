@@ -19,7 +19,8 @@ def install_packages():
         "fpdf2",
         "openpyxl",
         "xlrd",
-        "odfpy"
+        "odfpy",
+        "cryptography"
     ]
 
     spacy_models = [
