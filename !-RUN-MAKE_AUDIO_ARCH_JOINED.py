@@ -18,6 +18,34 @@ DELETE_ORIGIN_FILES = None
 # ==============================================================================
 
 
+def get_safe_output_path(base_path: Path, reserved_paths: set = None) -> Path:
+    """
+    Generates a safe target path to avoid overwriting existing files.
+    Appends a numerical suffix starting at (2), e.g., 'stem (2).ext', 'stem (3).ext',
+    if a file with the target name already exists (or is in reserved_paths).
+
+    Args:
+        base_path (Path): The original desired output path.
+        reserved_paths (set, optional): Set of paths already reserved in the current run.
+
+    Returns:
+        Path: A safe, unique file path.
+    """
+    if not base_path.exists() and (reserved_paths is None or base_path not in reserved_paths):
+        return base_path
+
+    parent = base_path.parent
+    stem = base_path.stem
+    ext = base_path.suffix
+
+    counter = 2
+    while True:
+        candidate = parent / f"{stem} ({counter}){ext}"
+        if not candidate.exists() and (reserved_paths is None or candidate not in reserved_paths):
+            return candidate
+        counter += 1
+
+
 def main():
     """
     Main execution function. Orchestrates the scanning and conversion of audio
@@ -37,8 +65,9 @@ def main():
     media_extensions = audio_extensions | video_extensions
 
     current_dir = Path.cwd()
-    output_filename = "union_audio_archive.m4a"
-    output_file_path = current_dir / output_filename
+    base_output_path = current_dir / "union_audio_archive.m4a"
+    output_file_path = get_safe_output_path(base_output_path)
+    output_filename = output_file_path.name
 
     print(f"[*] Scanning directory: {current_dir} for audio and video files...")
 
@@ -47,8 +76,8 @@ def main():
     try:
         for file_path in current_dir.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in media_extensions:
-                # Skip the output file if it already exists to avoid recursive looping
-                if file_path.name == output_filename:
+                # Avoid attempting to convert the destination file onto itself if it already exists
+                if file_path.resolve() == output_file_path.resolve():
                     continue
                 files_to_convert.append(file_path)
     except OSError as e:
@@ -157,9 +186,19 @@ def main():
             print(f"[-] Error uniting files: Subprocess failed with exit code {e.returncode}")
             if e.stderr:
                 print(f"    FFmpeg stderr: {e.stderr.strip()}")
+            if output_file_path.exists():
+                try:
+                    output_file_path.unlink()
+                except OSError:
+                    pass
             return 1
         except Exception as e:
             print(f"[-] An unexpected error occurred while uniting files: {e}")
+            if output_file_path.exists():
+                try:
+                    output_file_path.unlink()
+                except OSError:
+                    pass
             return 1
 
     print("-" * 50)
@@ -180,8 +219,9 @@ def main():
         if ans.strip().lower() == 'y':
             for fp in valid_source_files:
                 try:
-                    fp.unlink()
-                    print(f"[+] Arquivo de origem excluído: {fp.name}")
+                    if fp.exists():
+                        fp.unlink()
+                        print(f"[+] Arquivo de origem excluído: {fp.name}")
                 except Exception as e:
                     print(f"[-] Erro ao excluir {fp.name}: {e}")
 

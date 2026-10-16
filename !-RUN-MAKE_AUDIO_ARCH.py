@@ -17,6 +17,34 @@ DELETE_ORIGIN_FILES = None
 # ==============================================================================
 
 
+def get_safe_output_path(base_path: Path, reserved_paths: set = None) -> Path:
+    """
+    Generates a safe target path to avoid overwriting existing files.
+    Appends a numerical suffix starting at (2), e.g., 'stem (2).ext', 'stem (3).ext',
+    if a file with the target name already exists (or is in reserved_paths).
+
+    Args:
+        base_path (Path): The original desired output path.
+        reserved_paths (set, optional): Set of paths already reserved in the current run.
+
+    Returns:
+        Path: A safe, unique file path.
+    """
+    if not base_path.exists() and (reserved_paths is None or base_path not in reserved_paths):
+        return base_path
+
+    parent = base_path.parent
+    stem = base_path.stem
+    ext = base_path.suffix
+
+    counter = 2
+    while True:
+        candidate = parent / f"{stem} ({counter}){ext}"
+        if not candidate.exists() and (reserved_paths is None or candidate not in reserved_paths):
+            return candidate
+        counter += 1
+
+
 def main():
     """
     Main execution function. Orchestrates the scanning and conversion of audio
@@ -28,7 +56,7 @@ def main():
 
     # Common audio and video file extensions to convert
     audio_extensions = {
-        '.mp3', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus', '.m4b', '.aiff', '.alac'
+        '.mp3', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus', '.m4b', '.aiff', '.alac', '.m4a'
     }
     video_extensions = {
         '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.3g2', '.mpg', '.mpeg', '.ts', '.m2ts', '.ogv', '.vob'
@@ -44,12 +72,6 @@ def main():
     try:
         for file_path in current_dir.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in media_extensions:
-                # Skip already archived files to avoid duplicate conversions
-                if file_path.name.endswith(' (arch).m4a'):
-                    continue
-                # Avoid attempting to convert a file onto itself if source is already .m4a
-                if file_path.suffix.lower() == '.m4a':
-                    continue
                 files_to_convert.append(file_path)
     except OSError as e:
         print(f"[-] File System Error while scanning directory: {e}")
@@ -63,15 +85,21 @@ def main():
         print("[*] No audio or video files to convert. Exiting.")
         return 0
 
+    # Sort files alphabetically to ensure consistent processing order
+    files_to_convert.sort(key=lambda x: x.name)
+
     print(f"[+] Found {len(files_to_convert)} media file(s) to convert.")
     print("-" * 50)
 
     success_count = 0
     failure_count = 0
     processed_files = []
+    reserved_output_paths = set()
 
     for file_path in files_to_convert:
-        output_file = file_path.with_name(f"{file_path.stem}.m4a")
+        base_output = file_path.with_name(f"{file_path.stem}.m4a")
+        output_file = get_safe_output_path(base_output, reserved_output_paths)
+        reserved_output_paths.add(output_file)
 
         print(f"[*] Converting: '{file_path.name}' -> '{output_file.name}'...")
 
@@ -106,6 +134,11 @@ def main():
                 f"[-] Error converting '{file_path.name}': Subprocess failed with exit code {e.returncode}")
             if e.stderr:
                 print(f"    FFmpeg stderr: {e.stderr.strip()}")
+            if output_file.exists():
+                try:
+                    output_file.unlink()
+                except OSError:
+                    pass
             failure_count += 1
         except FileNotFoundError:
             print("[-] CRITICAL ERROR: ffmpeg was not found.")
@@ -115,6 +148,11 @@ def main():
         except Exception as e:
             print(
                 f"[-] An unexpected error occurred while converting '{file_path.name}': {e}")
+            if output_file.exists():
+                try:
+                    output_file.unlink()
+                except OSError:
+                    pass
             failure_count += 1
 
     print("-" * 50)
@@ -137,8 +175,9 @@ def main():
         if ans.strip().lower() == 'y':
             for fp in processed_files:
                 try:
-                    fp.unlink()
-                    print(f"[+] Arquivo de origem excluído: {fp.name}")
+                    if fp.exists():
+                        fp.unlink()
+                        print(f"[+] Arquivo de origem excluído: {fp.name}")
                 except Exception as e:
                     print(f"[-] Erro ao excluir {fp.name}: {e}")
 
