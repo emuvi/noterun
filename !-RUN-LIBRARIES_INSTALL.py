@@ -20,7 +20,8 @@ def install_packages():
         "openpyxl",
         "xlrd",
         "odfpy",
-        "cryptography"
+        "cryptography",
+        "pywin32"
     ]
 
     spacy_models = [
