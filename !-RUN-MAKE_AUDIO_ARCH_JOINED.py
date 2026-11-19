@@ -5,7 +5,20 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
 
 # ==============================================================================
 # GLOBAL CONFIGURATION
@@ -75,16 +88,18 @@ def main():
 
     try:
         for file_path in current_dir.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in media_extensions:
-                # Avoid attempting to convert the destination file onto itself if it already exists
-                if file_path.resolve() == output_file_path.resolve():
-                    continue
-                files_to_convert.append(file_path)
+            try:
+                if file_path.is_file() and file_path.suffix.lower() in media_extensions:
+                    if file_path.resolve() == output_file_path.resolve():
+                        continue
+                    files_to_convert.append(file_path)
+            except OSError:
+                continue
     except OSError as e:
-        print(f"[-] File System Error while scanning directory: {e}")
+        print_error(f"[-] File System Error while scanning directory: {e}")
         return 1
     except Exception as e:
-        print(f"[-] An unexpected error occurred while scanning directory: {e}")
+        print_error(f"[-] An unexpected error occurred while scanning directory: {e}")
         return 1
 
     if not files_to_convert:
@@ -113,11 +128,6 @@ def main():
 
             print(f"[*] Preparing ({idx}/{len(files_to_convert)}): '{file_path.name}'...")
 
-            # FFmpeg parameters to convert to intermediate WAV format:
-            # -vn : disable video processing (extract audio stream only)
-            # -ac 1 : downmix to mono
-            # -ar 16000 : lower sample rate to 16kHz
-            # -c:a pcm_s16le : standard 16-bit PCM WAV (lossless)
             cmd = [
                 'ffmpeg',
                 '-i', str(file_path),
@@ -128,43 +138,63 @@ def main():
                 '-y',
                 str(temp_wav_path)
             ]
+            fallback_cmd = [
+                'ffmpeg',
+                '-err_detect', 'ignore_err',
+                '-fflags', '+genpts',
+                '-i', str(file_path),
+                '-vn',
+                '-ac', '1',
+                '-ar', '16000',
+                '-c:a', 'pcm_s16le',
+                '-y',
+                str(temp_wav_path)
+            ]
 
             try:
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
                 valid_wav_files.append(temp_wav_name)
                 valid_source_files.append(file_path)
                 success_count += 1
-            except subprocess.CalledProcessError as e:
-                print(f"[-] Error converting '{file_path.name}' to intermediate format: Subprocess failed with exit code {e.returncode}")
-                if e.stderr:
-                    print(f"    FFmpeg stderr: {e.stderr.strip()}")
-                failure_count += 1
             except FileNotFoundError:
-                print("[-] CRITICAL ERROR: ffmpeg was not found.")
-                print("[-] Please make sure ffmpeg is installed and added to your system's PATH.")
+                print_error("[-] CRITICAL ERROR: ffmpeg was not found.")
+                print_error("[-] Please make sure ffmpeg is installed and added to your system's PATH.")
                 return 1
+            except subprocess.CalledProcessError as e:
+                print(f"[*] Initial preparation failed for '{file_path.name}'. Retrying with error-tolerant flags...")
+                try:
+                    subprocess.run(fallback_cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
+                    valid_wav_files.append(temp_wav_name)
+                    valid_source_files.append(file_path)
+                    success_count += 1
+                    continue
+                except subprocess.CalledProcessError as e2:
+                    err_to_show = e2.stderr.strip() if e2.stderr else (e.stderr.strip() if e.stderr else str(e2))
+                    print_error(f"[-] Error converting '{file_path.name}' to intermediate format: Subprocess failed with exit code {e2.returncode}")
+                    if err_to_show:
+                        print_error(f"    FFmpeg stderr: {err_to_show}")
+                except Exception as e2:
+                    print_error(f"[-] Fallback conversion error for '{file_path.name}': {e2}")
+                failure_count += 1
             except Exception as e:
-                print(f"[-] An unexpected error occurred while converting '{file_path.name}': {e}")
+                print_error(f"[-] An unexpected error occurred while converting '{file_path.name}': {e}")
                 failure_count += 1
 
         if not valid_wav_files:
-            print("[-] No valid files were successfully processed. Aborting union operation.")
+            print_error("[-] No valid files were successfully processed. Aborting union operation.")
             return 1
             
         print("-" * 50)
         print(f"[*] Uniting {len(valid_wav_files)} processed files into '{output_filename}'...")
 
-        # Create concat.txt containing the list of temporary wav files
         try:
             with open(concat_list_path, 'w', encoding='utf-8') as f:
                 for wav_name in valid_wav_files:
                     f.write(f"file '{wav_name}'\n")
         except Exception as e:
-            print(f"[-] Error writing concat list: {e}")
+            print_error(f"[-] Error writing concat list: {e}")
             return 1
 
-        # Run ffmpeg concat
-        # We explicitly set the codecs again just to be sure we encode to the right format
         concat_cmd = [
             'ffmpeg',
             '-f', 'concat',
@@ -179,13 +209,12 @@ def main():
         ]
 
         try:
-            # Run in the temp directory so it can find the wav files easily
-            result = subprocess.run(concat_cmd, cwd=temp_dir_path, check=True, capture_output=True, text=True)
+            subprocess.run(concat_cmd, cwd=temp_dir_path, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
             print(f"[+] Successfully created union archive '{output_filename}'.")
         except subprocess.CalledProcessError as e:
-            print(f"[-] Error uniting files: Subprocess failed with exit code {e.returncode}")
+            print_error(f"[-] Error uniting files: Subprocess failed with exit code {e.returncode}")
             if e.stderr:
-                print(f"    FFmpeg stderr: {e.stderr.strip()}")
+                print_error(f"    FFmpeg stderr: {e.stderr.strip()}")
             if output_file_path.exists():
                 try:
                     output_file_path.unlink()
@@ -193,7 +222,7 @@ def main():
                     pass
             return 1
         except Exception as e:
-            print(f"[-] An unexpected error occurred while uniting files: {e}")
+            print_error(f"[-] An unexpected error occurred while uniting files: {e}")
             if output_file_path.exists():
                 try:
                     output_file_path.unlink()
@@ -206,7 +235,7 @@ def main():
     print(f"[+] Files successfully processed: {success_count}")
 
     if failure_count > 0:
-        print(f"[-] Failed to process {failure_count} files (skipped in final archive).")
+        print_error(f"[-] Failed to process {failure_count} files (skipped in final archive).")
     
     if valid_source_files:
         if DELETE_ORIGIN_FILES is True:
@@ -214,20 +243,40 @@ def main():
         elif DELETE_ORIGIN_FILES is False:
             ans = 'n'
         else:
-            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            try:
+                ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            except (EOFError, KeyboardInterrupt):
+                ans = 'n'
             
         if ans.strip().lower() == 'y':
             for fp in valid_source_files:
-                try:
-                    if fp.exists():
-                        fp.unlink()
-                        print(f"[+] Arquivo de origem excluído: {fp.name}")
-                except Exception as e:
-                    print(f"[-] Erro ao excluir {fp.name}: {e}")
+                deleted = False
+                last_err = None
+                for attempt in range(1, 4):
+                    try:
+                        if fp.exists():
+                            fp.unlink()
+                            print(f"[+] Arquivo de origem excluído: {fp.name}")
+                        deleted = True
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt < 3:
+                            time.sleep(0.4 * attempt)
+                if not deleted:
+                    failure_count += 1
+                    print_error(f"[-] Erro ao excluir {fp.name}: {last_err}")
 
-    return 0
+    return 1 if failure_count > 0 else 0
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

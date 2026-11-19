@@ -7,9 +7,25 @@ import json
 import os
 import sys
 import glob
+import time
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 REPO_API_URL = "https://api.github.com/repos/emuvi/noterun/contents"
 SCRIPT_PREFIX = "!-RUN"
+REQUEST_TIMEOUT = 30
+MAX_RETRIES = 3
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
 
 def fetch_repository_contents(url: str) -> list:
     """
@@ -25,22 +41,41 @@ def fetch_repository_contents(url: str) -> list:
     print(f"[*] Fetching repository contents from GitHub API...")
     req = urllib.request.Request(url)
     req.add_header('User-Agent', 'Python-urllib')
-    
-    try:
-        with urllib.request.urlopen(req) as response:
-            response_data = response.read().decode('utf-8')
-            data = json.loads(response_data)
-            print("[+] Successfully retrieved repository contents.")
-            return data
-    except urllib.error.HTTPError as e:
-        print(f"[-] HTTP Error {e.code} while fetching repository contents: {e.reason}")
-    except urllib.error.URLError as e:
-        print(f"[-] Network Error while reaching GitHub: {e.reason}")
-    except json.JSONDecodeError as e:
-        print(f"[-] Error decoding JSON response from GitHub API: {e}")
-    except Exception as e:
-        print(f"[-] An unexpected error occurred while fetching repository contents: {e}")
-    
+    last_error = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
+                response_data = response.read().decode('utf-8', errors='replace')
+                data = json.loads(response_data)
+                print("[+] Successfully retrieved repository contents.")
+                return data
+        except urllib.error.HTTPError as e:
+            last_error = f"HTTP Error {e.code} while fetching repository contents: {e.reason}"
+            if 500 <= e.code < 600 and attempt < MAX_RETRIES:
+                print(f"[*] Transient HTTP {e.code} (attempt {attempt}/{MAX_RETRIES}). Retrying...")
+                time.sleep(attempt * 2)
+                continue
+            break
+        except urllib.error.URLError as e:
+            last_error = f"Network Error while reaching GitHub: {e.reason}"
+            if attempt < MAX_RETRIES:
+                print(f"[*] Transient network error (attempt {attempt}/{MAX_RETRIES}). Retrying...")
+                time.sleep(attempt * 2)
+                continue
+            break
+        except json.JSONDecodeError as e:
+            last_error = f"Error decoding JSON response from GitHub API: {e}"
+            break
+        except Exception as e:
+            last_error = f"An unexpected error occurred while fetching repository contents: {e}"
+            if attempt < MAX_RETRIES:
+                time.sleep(attempt * 2)
+                continue
+            break
+
+    if last_error:
+        print_error(f"[-] {last_error}")
     return []
 
 def filter_scripts(contents: list, prefix: str, local_scripts: set) -> list:
@@ -60,7 +95,7 @@ def filter_scripts(contents: list, prefix: str, local_scripts: set) -> list:
     filtered_scripts = []
     
     if not isinstance(contents, list):
-        print(f"[-] Invalid contents format received from API. Expected a list, got {type(contents).__name__}.")
+        print_error(f"[-] Invalid contents format received from API. Expected a list, got {type(contents).__name__}.")
         return filtered_scripts
 
     for item in contents:
@@ -68,7 +103,7 @@ def filter_scripts(contents: list, prefix: str, local_scripts: set) -> list:
         if not isinstance(item, dict) or not all(k in item for k in ("type", "name", "download_url")):
             continue
 
-        if item["type"] == "file" and item["name"].startswith(prefix) and item["name"] in local_scripts:
+        if item["type"] == "file" and item["name"].startswith(prefix) and item["name"] in local_scripts and item.get("download_url"):
             # Include this script for update
             filtered_scripts.append(item)
             
@@ -89,31 +124,66 @@ def download_script(download_url: str, target_path: str) -> bool:
     file_name = os.path.basename(target_path)
 
     print(f"[*] Updating '{file_name}'...")
-    try:
-        req = urllib.request.Request(download_url)
-        req.add_header('User-Agent', 'Python-urllib')
-        with urllib.request.urlopen(req) as response:
-            new_data = response.read()
-            
-        if os.path.exists(target_path):
-            with open(target_path, 'rb') as f:
-                if f.read() == new_data:
-                    print(f"[+] File '{file_name}' is already up-to-date. Skipping write.")
-                    return True
-            
-        with open(target_path, 'wb') as f:
-            f.write(new_data)
-        print(f"[+] Successfully updated '{file_name}'.")
-        return True
-    except urllib.error.HTTPError as e:
-        print(f"[-] HTTP Error {e.code} while updating '{file_name}': {e.reason}")
-    except urllib.error.URLError as e:
-        print(f"[-] Network Error while updating '{file_name}': {e.reason}")
-    except OSError as e:
-        print(f"[-] File System Error while saving '{file_name}': {e}")
-    except Exception as e:
-        print(f"[-] An unexpected error occurred while updating '{file_name}': {e}")
-        
+    last_error = None
+    new_data = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            req = urllib.request.Request(download_url)
+            req.add_header('User-Agent', 'Python-urllib')
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
+                new_data = response.read()
+            break
+        except urllib.error.HTTPError as e:
+            last_error = f"HTTP Error {e.code} while updating '{file_name}': {e.reason}"
+            if 500 <= e.code < 600 and attempt < MAX_RETRIES:
+                print(f"[*] Transient HTTP {e.code} for '{file_name}' (attempt {attempt}/{MAX_RETRIES}). Retrying...")
+                time.sleep(attempt * 2)
+                continue
+            break
+        except urllib.error.URLError as e:
+            last_error = f"Network Error while updating '{file_name}': {e.reason}"
+            if attempt < MAX_RETRIES:
+                print(f"[*] Transient network error for '{file_name}' (attempt {attempt}/{MAX_RETRIES}). Retrying...")
+                time.sleep(attempt * 2)
+                continue
+            break
+        except Exception as e:
+            last_error = f"An unexpected error occurred while updating '{file_name}': {e}"
+            if attempt < MAX_RETRIES:
+                time.sleep(attempt * 2)
+                continue
+            break
+
+    if new_data is None:
+        print_error(f"[-] {last_error or f'Failed to update {file_name}'}")
+        return False
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            if os.path.exists(target_path):
+                try:
+                    with open(target_path, 'rb') as f:
+                        if f.read() == new_data:
+                            print(f"[+] File '{file_name}' is already up-to-date. Skipping write.")
+                            return True
+                except OSError:
+                    pass
+
+            with open(target_path, 'wb') as f:
+                f.write(new_data)
+            print(f"[+] Successfully updated '{file_name}'.")
+            return True
+        except OSError as e:
+            last_error = f"File System Error while saving '{file_name}': {e}"
+            if attempt < MAX_RETRIES:
+                time.sleep(0.5 * attempt)
+                continue
+        except Exception as e:
+            last_error = f"An unexpected error occurred while saving '{file_name}': {e}"
+            break
+
+    print_error(f"[-] {last_error}")
     return False
 
 def main():
@@ -125,10 +195,11 @@ def main():
     print("   Noterun Local Scripts Updater Initialized")
     print("=" * 50)
     
-    self_path = os.path.abspath(__file__)
-    script_dir = os.path.dirname(self_path)
-    pattern = os.path.join(script_dir, f"{SCRIPT_PREFIX}*.py")
-    local_paths = glob.glob(pattern)
+    script_dir = os.getcwd()
+    local_paths = (
+        glob.glob(os.path.join(script_dir, f"{SCRIPT_PREFIX}*.py"))
+        + glob.glob(os.path.join(script_dir, f"{SCRIPT_PREFIX}*.bat"))
+    )
     local_scripts = {os.path.basename(path) for path in local_paths}
     
     print(f"[*] Found {len(local_scripts)} local script(s) matching prefix '{SCRIPT_PREFIX}'.")
@@ -136,7 +207,7 @@ def main():
     contents = fetch_repository_contents(REPO_API_URL)
     
     if not contents:
-        print("[-] Aborting update process due to failure in fetching contents.")
+        print_error("[-] Aborting update process due to failure in fetching contents.")
         return 1
         
     scripts_to_download = filter_scripts(contents, SCRIPT_PREFIX, local_scripts)
@@ -163,12 +234,19 @@ def main():
     print(f"[+] Successful updates: {success_count}")
     
     if failure_count > 0:
-        print(f"[-] Failed updates: {failure_count}")
+        print_error(f"[-] Failed updates: {failure_count}")
         return 1
     else:
         print("[+] All existing local scripts updated successfully!")
         return 0
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

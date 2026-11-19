@@ -4,7 +4,20 @@
 import os
 import subprocess
 import sys
+import time
 from typing import Optional
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
 
 # ==============================================================================
 # GLOBAL CONFIGURATION
@@ -37,40 +50,36 @@ def get_duration(filepath: str) -> Optional[float]:
              '-of', 'default=noprint_wrappers=1:nokey=1', filepath],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=True
         )
         duration = float(result.stdout.strip())
+        if duration <= 0:
+            print_error(f"[-] Invalid media duration ({duration}) for '{filename}'.")
+            return None
         print(f"[+] Duration found: {duration:.2f} seconds.")
         return duration
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.strip() if e.stderr else str(e)
-        print(f"[-] ffprobe process failed for '{filename}'. Error:\n    {error_msg}")
+        print_error(f"[-] ffprobe process failed for '{filename}'. Error:\n    {error_msg}")
     except FileNotFoundError:
-        print(f"[-] 'ffprobe' not found. Ensure ffmpeg is installed and added to your system PATH.")
+        print_error(f"[-] 'ffprobe' not found. Ensure ffmpeg is installed and added to your system PATH.")
     except Exception as e:
-        print(f"[-] Unexpected error getting duration for '{filename}': {e}")
+        print_error(f"[-] Unexpected error getting duration for '{filename}': {e}")
         
     return None
 
 def verify_and_cleanup(filepath: str, part1_path: str, part2_path: str, filename: str) -> bool:
     """
     Verifies that the split was successful and cleans up the original file.
-    
-    Args:
-        filepath (str): Original file path.
-        part1_path (str): First split part path.
-        part2_path (str): Second split part path.
-        filename (str): Original filename.
-        
-    Returns:
-        bool: True if validation passed and cleanup was successful, False otherwise.
     """
     if not (os.path.exists(part1_path) and os.path.exists(part2_path)):
-        print(f"[-] Splitting failed: Expected part files were not found after ffmpeg execution.\n")
+        print_error(f"[-] Splitting failed: Expected part files were not found after ffmpeg execution.\n")
         return False
         
     if os.path.getsize(part1_path) <= 0 or os.path.getsize(part2_path) <= 0:
-        print(f"[-] Splitting failed: Generated parts are empty.\n")
+        print_error(f"[-] Splitting failed: Generated parts are empty.\n")
         return False
         
     print(f"[+] Splitting verified. Original file '{filename}' kept for now.\n")
@@ -78,45 +87,38 @@ def verify_and_cleanup(filepath: str, part1_path: str, part2_path: str, filename
 
 def execute_ffmpeg_split(filepath: str, target_path: str, duration_args: list, part_name: str) -> bool:
     """
-    Executes an ffmpeg command to extract a portion of a video.
-    
-    Args:
-        filepath (str): The source file.
-        target_path (str): The output file.
-        duration_args (list): The list of arguments to specify duration (e.g., ['-t', '...'] or ['-ss', '...']).
-        part_name (str): Label for logging (e.g., 'Part 1').
-        
-    Returns:
-        bool: True if ffmpeg executes successfully, False otherwise.
+    Executes an ffmpeg command to extract a portion of a video/audio file.
+    Falls back to re-encoding if stream copy fails.
     """
     print(f"[*] Executing ffmpeg for {part_name}...")
+    cmd = ['ffmpeg', '-y', '-i', filepath] + duration_args + ['-c', 'copy', target_path]
+    fallback_cmd = ['ffmpeg', '-y', '-err_detect', 'ignore_err', '-i', filepath] + duration_args + [target_path]
     try:
-        cmd = ['ffmpeg', '-y', '-i', filepath] + duration_args + ['-c', 'copy', target_path]
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
         print(f"[+] {part_name} created successfully.")
         return True
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.strip() if e.stderr else str(e)
-        print(f"[-] ffmpeg failed while creating {part_name}. Error:\n    {error_msg}\n")
     except FileNotFoundError:
-        print(f"[-] 'ffmpeg' not found. Ensure ffmpeg is installed and added to your system PATH.\n")
+        print_error(f"[-] 'ffmpeg' not found. Ensure ffmpeg is installed and added to your system PATH.\n")
+        return False
+    except subprocess.CalledProcessError as e:
+        print(f"[*] Stream copy failed for {part_name}. Retrying with re-encode fallback...")
+        try:
+            subprocess.run(fallback_cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
+            print(f"[+] {part_name} created successfully (re-encode fallback).")
+            return True
+        except subprocess.CalledProcessError as e2:
+            error_msg = e2.stderr.strip() if e2.stderr else (e.stderr.strip() if e.stderr else str(e2))
+            print_error(f"[-] ffmpeg failed while creating {part_name}. Error:\n    {error_msg}\n")
+        except Exception as e2:
+            print_error(f"[-] Fallback ffmpeg error for {part_name}: {e2}\n")
     except Exception as e:
-        print(f"[-] Unexpected error executing ffmpeg for {part_name}: {e}\n")
+        print_error(f"[-] Unexpected error executing ffmpeg for {part_name}: {e}\n")
         
     return False
 
 def split_media_file(filepath: str, directory: str, filename: str, duration: float) -> bool:
     """
     Splits the media file into two equal halves using ffmpeg.
-    
-    Args:
-        filepath (str): The absolute path to the file.
-        directory (str): The directory containing the file.
-        filename (str): The file's name.
-        duration (float): The total duration of the media file in seconds.
-        
-    Returns:
-        bool: True if the file was split successfully, False otherwise.
     """
     half_time = duration / 2.0
     name_part, ext = os.path.splitext(filename)
@@ -133,7 +135,7 @@ def split_media_file(filepath: str, directory: str, filename: str, duration: flo
             try:
                 os.remove(p_path)
             except OSError as e:
-                print(f"[-] Failed to delete existing part '{p_name}': {e}\n")
+                print_error(f"[-] Failed to delete existing part '{p_name}': {e}\n")
                 return False
 
     print(f"[*] Splitting '{filename}' into two halves.")
@@ -142,31 +144,43 @@ def split_media_file(filepath: str, directory: str, filename: str, duration: flo
     
     # Extract First Half
     if not execute_ffmpeg_split(filepath, part1_path, ['-t', str(half_time)], "Part 1"):
+        for p in (part1_path, part2_path):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
         return False
         
     # Extract Second Half
     if not execute_ffmpeg_split(filepath, part2_path, ['-ss', str(half_time)], "Part 2"):
+        for p in (part1_path, part2_path):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
         return False
 
     # Verify and cleanup
-    return verify_and_cleanup(filepath, part1_path, part2_path, filename)
+    if not verify_and_cleanup(filepath, part1_path, part2_path, filename):
+        for p in (part1_path, part2_path):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        return False
+    return True
 
 def process_file(filepath: str, directory: str, filename: str) -> tuple:
     """
     Checks the file size and triggers splitting if the size exceeds MAX_SIZE.
-    
-    Args:
-        filepath (str): Path to the file.
-        directory (str): Directory containing the file.
-        filename (str): Name of the file.
-        
-    Returns:
-        tuple: (bool: success, bool: splitted)
     """
     try:
         size = os.path.getsize(filepath)
     except OSError as e:
-        print(f"[-] OS Error: Could not retrieve size for '{filename}': {e}")
+        print_error(f"[-] OS Error: Could not retrieve size for '{filename}': {e}")
         return False, False
 
     if size > MAX_SIZE:
@@ -177,20 +191,14 @@ def process_file(filepath: str, directory: str, filename: str) -> tuple:
         if duration:
             return split_media_file(filepath, directory, filename, duration), True
         else:
-            print(f"[-] Skipping '{filename}' due to duration retrieval failure.\n")
+            print_error(f"[-] Skipping '{filename}' due to duration retrieval failure.\n")
             return False, False
             
     return True, False
 
-def filter_media_files(directory: str) -> list:
+def filter_media_files(directory: str) -> tuple:
     """
     Filters the directory to find media files eligible for size checking.
-    
-    Args:
-        directory (str): Directory to scan.
-        
-    Returns:
-        list: A list of media filenames.
     """
     print(f"[*] Scanning directory '{directory}' for media files to check...")
     media_files = []
@@ -198,19 +206,25 @@ def filter_media_files(directory: str) -> list:
     try:
         files = os.listdir(directory)
     except PermissionError as e:
-        print(f"[-] Permission Denied accessing directory '{directory}': {e}")
-        return []
+        print_error(f"[-] Permission Denied accessing directory '{directory}': {e}")
+        return [], False
     except Exception as e:
-        print(f"[-] Unexpected error accessing directory '{directory}': {e}")
-        return []
+        print_error(f"[-] Unexpected error accessing directory '{directory}': {e}")
+        return [], False
+
+    self_name = os.path.basename(__file__)
+    self_bat = os.path.splitext(self_name)[0] + ".bat"
 
     for filename in files:
         filepath = os.path.join(directory, filename)
         
-        if not os.path.isfile(filepath):
+        try:
+            if not os.path.isfile(filepath):
+                continue
+        except OSError:
             continue
             
-        if filename.startswith('!-') or filename == os.path.basename(__file__):
+        if filename.startswith('!-') or filename in (self_name, self_bat):
             continue
             
         if not filename.lower().endswith(('.mp4', '.mp3')):
@@ -219,7 +233,7 @@ def filter_media_files(directory: str) -> list:
         media_files.append(filename)
         
     print(f"[+] Found {len(media_files)} media file(s) for size evaluation.\n")
-    return media_files
+    return media_files, True
 
 def main():
     """
@@ -230,8 +244,10 @@ def main():
     print("   Noterun Large Media Split Script Initialized")
     print("=" * 50)
     
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    media_files = filter_media_files(script_dir)
+    script_dir = os.getcwd()
+    media_files, scan_ok = filter_media_files(script_dir)
+    if not scan_ok:
+        return 1
     
     if not media_files:
         print("[*] No target media files found. Exiting.")
@@ -258,7 +274,7 @@ def main():
     print(f"[+] Successfully evaluated/processed: {success_count}")
     
     if failure_count > 0:
-        print(f"[-] Errors encountered during processing: {failure_count}")
+        print_error(f"[-] Errors encountered during processing: {failure_count}")
     else:
         print("[+] All files processed without errors!")
 
@@ -268,18 +284,38 @@ def main():
         elif DELETE_ORIGIN_FILES is False:
             ans = 'n'
         else:
-            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            try:
+                ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            except (EOFError, KeyboardInterrupt):
+                ans = 'n'
             
         if ans.strip().lower() == 'y':
             for fp in processed_files:
-                try:
-                    os.remove(fp)
-                    print(f"[+] Arquivo de origem excluído: {os.path.basename(fp)}")
-                except Exception as e:
-                    print(f"[-] Erro ao excluir {os.path.basename(fp)}: {e}")
+                deleted = False
+                last_err = None
+                for attempt in range(1, 4):
+                    try:
+                        os.remove(fp)
+                        print(f"[+] Arquivo de origem excluído: {os.path.basename(fp)}")
+                        deleted = True
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt < 3:
+                            time.sleep(0.4 * attempt)
+                if not deleted:
+                    failure_count += 1
+                    print_error(f"[-] Erro ao excluir {os.path.basename(fp)}: {last_err}")
 
     return 1 if failure_count > 0 else 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

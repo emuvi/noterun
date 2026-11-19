@@ -1,14 +1,62 @@
 import os
 import io
+import logging
 import re
 import sys
+import time
 import unicodedata
+import warnings
 from pathlib import Path
-from pypdf import PdfReader
 from datetime import datetime
 import importlib
-import spacy
-from langdetect import detect
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+try:
+    from pypdf import PdfReader
+except ImportError as e:
+    print(f"🔴 [ERROR] Required library 'pypdf' is not installed: {e}. Install with: pip install pypdf", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    import spacy
+except ImportError:
+    spacy = None
+
+try:
+    from langdetect import detect
+except ImportError:
+    detect = None
+
+
+def log_error_line(message: str) -> None:
+    """Prints an error line to stderr and also records it in stdout capture when active."""
+    print(message, file=sys.stderr)
+    if isinstance(sys.stdout, io.StringIO):
+        print(message)
+
+
+def _safe_rename(src, dst) -> None:
+    """Renames a file with brief retries on transient Windows file locks."""
+    last_err = None
+    for attempt in range(1, 4):
+        try:
+            os.rename(src, dst)
+            return
+        except OSError as e:
+            last_err = e
+            if attempt < 3:
+                time.sleep(0.4 * attempt)
+    raise last_err
 
 
 FIELD_MARKERS = (
@@ -174,7 +222,7 @@ def find_title(text, number):
     if result:
         print(f"{get_current_time()} ✅ [SUCCESS] [find_title] Completed. Found title: '{result}'")
     else:
-        print(f"{get_current_time()} 🔴 [ERROR] [find_title] Failed to find title.")
+        print(f"{get_current_time()} ℹ️ [LOG] [find_title] No title pattern matched.")
     return result
 
 
@@ -239,32 +287,35 @@ def find_number(text):
     if result:
         print(f"{get_current_time()} ✅ [SUCCESS] [find_number] Completed. Found number: {result}")
     else:
-        print(f"{get_current_time()} 🔴 [ERROR] [find_number] Failed to find number.")
+        print(f"{get_current_time()} ℹ️ [LOG] [find_number] No demand number pattern matched.")
     return result
 
 
 def extract_text_from_pdf(pdf_path):
     """
     Lê o conteúdo do PDF, limitado às primeiras 3 páginas.
-
-    Parameters:
-        pdf_path (Path): Path object to the PDF file.
-
-    Returns:
-        str: Raw text extracted from the PDF.
     """
     print(f"{get_current_time()} 🔹 [STEP] [extract_text_from_pdf] Starting reading: {pdf_path.name}")
     try:
         reader = PdfReader(pdf_path)
-        result = "\n".join(
-            page.extract_text()
-            for page in reader.pages[:3]
-            if page.extract_text()
-        )
+        if getattr(reader, "is_encrypted", False):
+            try:
+                reader.decrypt("")
+            except Exception:
+                pass
+        pages_text = []
+        for idx, page in enumerate(reader.pages[:3]):
+            try:
+                extracted = page.extract_text()
+                if extracted:
+                    pages_text.append(extracted)
+            except Exception as page_err:
+                log_error_line(f"{get_current_time()} 🔴 [ERROR] [extract_text_from_pdf] Failed page {idx + 1} of {pdf_path.name}: {page_err}")
+        result = "\n".join(pages_text)
         print(f"{get_current_time()} ✅ [SUCCESS] [extract_text_from_pdf] Completed text extraction.")
         return result
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [extract_text_from_pdf] Failed to read PDF {pdf_path.name}: {e}")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [extract_text_from_pdf] Failed to read PDF {pdf_path.name}: {e}")
         raise
 
 
@@ -329,7 +380,7 @@ def extract_info_from_pdf(pdf_path):
         print(f"{get_current_time()} ✅ [SUCCESS] [extract_info_from_pdf] Completed extraction for {pdf_path.name}. Numero: {numero}, Titulo: {titulo}")
         return numero, titulo, text
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [extract_info_from_pdf] Erro ao processar o arquivo {pdf_path.name}: {e}")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [extract_info_from_pdf] Erro ao processar o arquivo {pdf_path.name}: {e}")
         print(f"{get_current_time()} ℹ️ [LOG] [extract_info_from_pdf] How to fix: Ensure the file is a valid, readable PDF document.")
         return None, None, ""
 
@@ -376,39 +427,37 @@ def unique_path(path):
         if not candidate.exists():
             print(f"{get_current_time()} ✅ [SUCCESS] [unique_path] Completed. Found unique suffix: {suffix}")
             return candidate
-    print(f"{get_current_time()} 🔴 [ERROR] [unique_path] Não foi possível encontrar nome livre para '{path.name}'")
+    log_error_line(f"{get_current_time()} 🔴 [ERROR] [unique_path] Não foi possível encontrar nome livre para '{path.name}'")
     raise OSError(f"Não foi possível encontrar nome livre para '{path.name}'")
 
 
 def get_file_time(filepath):
     """
-    Retrieves the file's creation time, falling back to modification time if necessary.
-    
-    Args:
-        filepath (Path): The absolute path to the file.
-        
-    Returns:
-        datetime: The parsed datetime object, or None if an error occurs.
+    Retrieves the file's modification time, falling back safely if timestamps are invalid.
     """
     print(f"{get_current_time()} 🔹 [STEP] [get_file_time] Starting extraction for: {filepath.name}")
     try:
         stat = os.stat(filepath)
     except OSError as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [get_file_time] OS Error getting file time for '{filepath.name}': {e}")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [get_file_time] OS Error getting file time for '{filepath.name}': {e}")
         return None
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [get_file_time] Unexpected error getting file time for '{filepath.name}': {e}")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [get_file_time] Unexpected error getting file time for '{filepath.name}': {e}")
         return None
 
-    try:
-        # Prioritize modification time over creation time
-        result = datetime.fromtimestamp(stat.st_mtime)
-        print(f"{get_current_time()} ✅ [SUCCESS] [get_file_time] Completed. Time: {result}")
-        return result
-    except AttributeError:
-        result = datetime.fromtimestamp(stat.st_ctime)
-        print(f"{get_current_time()} ✅ [SUCCESS] [get_file_time] Completed. Time: {result}")
-        return result
+    for ts_attr in ("st_mtime", "st_ctime"):
+        ts = getattr(stat, ts_attr, None)
+        if ts is not None:
+            try:
+                result = datetime.fromtimestamp(ts)
+                print(f"{get_current_time()} ✅ [SUCCESS] [get_file_time] Completed. Time: {result}")
+                return result
+            except (OSError, OverflowError, ValueError):
+                continue
+
+    result = datetime.now()
+    print(f"{get_current_time()} ✅ [SUCCESS] [get_file_time] Completed with current time fallback: {result}")
+    return result
 
 
 def parse_date_prefix(filename):
@@ -502,7 +551,7 @@ def generate_new_filename(filename, filepath):
     else:
         dt = get_file_time(filepath)
         if not dt:
-            print(f"{get_current_time()} 🔴 [ERROR] [generate_new_filename] Cannot process without a valid date.")
+            log_error_line(f"{get_current_time()} 🔴 [ERROR] [generate_new_filename] Cannot process without a valid date.")
             return None, "Cannot process without a valid date in file metadata"
             
         rest_of_name = filename
@@ -555,27 +604,32 @@ def process_and_rename_by_time(filepath):
         if filepath.name.lower() == new_name.lower():
             if filepath.name != new_name:
                 temp_path = filepath.with_name(new_name + ".tmp")
-                os.rename(filepath, temp_path)
-                os.rename(temp_path, filepath.with_name(new_name))
+                _safe_rename(filepath, temp_path)
+                _safe_rename(temp_path, filepath.with_name(new_name))
                 print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_by_time] Renamed (case adjustment): '{filepath.name}' -> '{new_name}'")
                 return "SUCCESS"
             return "IGNORED"
             
         new_filepath = unique_path(filepath.with_name(new_name))
-        os.rename(filepath, new_filepath)
+        _safe_rename(filepath, new_filepath)
         print(f"{get_current_time()} ✅ [SUCCESS] [process_and_rename_by_time] Renamed: '{filepath.name}' -> '{new_filepath.name}'")
         return "SUCCESS"
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_by_time] Falha ao renomear '{filepath.name}': {e}")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_and_rename_by_time] Falha ao renomear '{filepath.name}': {e}")
         return "ERROR"
 
 
 def load_spacy_model(lang_code):
     """
     Loads spacy and the appropriate NLP model based on language.
+    Falls back to other installed models or None (rule-based fallback) if unavailable.
     """
     func_name = "load_spacy_model"
     print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Starting - Parameters: lang_code={lang_code}")
+    if spacy is None:
+        print(f"{get_current_time()} ℹ️ [LOG] [{func_name}] Spacy not available; using rule-based fallback.")
+        return None
+
     spacy_models_map = {
         "pt": "pt_core_news_sm",
         "en": "en_core_web_sm",
@@ -588,29 +642,27 @@ def load_spacy_model(lang_code):
         "ru": "ru_core_news_sm",
         "xx": "xx_ent_wiki_sm"
     }
-    model_name = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
+    primary = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
+    candidates = [primary] + [m for m in ("xx_ent_wiki_sm", "pt_core_news_sm", "en_core_web_sm") if m != primary]
 
-    try:
-        print(f"{get_current_time()} 🔹 [STEP] [{func_name}] Loading Spacy model '{model_name}' for language '{lang_code}'")
-
+    for model_name in candidates:
         if model_name in nlp_models_cache:
             print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Found in cache: {model_name}")
             return nlp_models_cache[model_name]
-
         try:
-            model_module = importlib.import_module(model_name)
-            model = model_module.load()
+            try:
+                model_module = importlib.import_module(model_name)
+                model = model_module.load()
+            except (ImportError, AttributeError):
+                model = spacy.load(model_name)
             nlp_models_cache[model_name] = model
-            print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Loaded dynamically: {model_name}")
+            print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Loaded: {model_name}")
             return model
-        except (ImportError, AttributeError):
-            model = spacy.load(model_name)
-            nlp_models_cache[model_name] = model
-            print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Loaded via spacy.load: {model_name}")
-            return model
-    except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [{func_name}] Error: Spacy model '{model_name}' could not be loaded ({e}).")
-        raise RuntimeError(f"Spacy model '{model_name}' not loaded: {e}")
+        except Exception:
+            continue
+
+    print(f"{get_current_time()} ℹ️ [LOG] [{func_name}] No Spacy model could be loaded for '{lang_code}'; using rule-based fallback.")
+    return None
 
 
 def abbreviate_words(text, nlp_model, target_pos, preserve_first=True, protect_first_n=100):
@@ -624,6 +676,19 @@ def abbreviate_words(text, nlp_model, target_pos, preserve_first=True, protect_f
         if not text or text.upper() == "EMPTY":
             print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Empty text, nothing to abbreviate.")
             return ""
+
+        if nlp_model is None:
+            words = text.split()
+            pos = 0
+            out_words = []
+            for idx, word in enumerate(words):
+                has_alpha = any(c.isalpha() for c in word)
+                if pos >= protect_first_n and has_alpha and len(word) > 4 and not (preserve_first and idx == 0):
+                    out_words.append(word[:3] + ".")
+                else:
+                    out_words.append(word)
+                pos += len(word) + 1
+            return " ".join(out_words).strip()
 
         doc = nlp_model(text)
         out = ""
@@ -651,7 +716,7 @@ def abbreviate_words(text, nlp_model, target_pos, preserve_first=True, protect_f
         print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Abbreviated result length: {len(res)}")
         return res
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [{func_name}] Failed to abbreviate words: {e}")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [{func_name}] Failed to abbreviate words: {e}")
         return text
 
 
@@ -693,13 +758,16 @@ def apply_abbreviation_phases(summary, nlp_model):
     summary = abbreviate_words(summary, nlp_model, all_pos)
 
     if len(summary) > 255:
-        doc = nlp_model(summary)
-        truncated = ""
-        for token in doc:
-            if len(truncated) + len(token.text) + 3 > 255:
-                break
-            truncated += token.text + token.whitespace_
-        summary = truncated.strip() + "..."
+        if nlp_model is not None:
+            doc = nlp_model(summary)
+            truncated = ""
+            for token in doc:
+                if len(truncated) + len(token.text) + 3 > 255:
+                    break
+                truncated += token.text + token.whitespace_
+            summary = truncated.strip() + "..."
+        else:
+            summary = summary[:252].rstrip() + "..."
 
     print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed NLP abbreviation phases (all phases).")
     return summary
@@ -723,6 +791,21 @@ def prettify_name_logic(name: str, nlp_model) -> str:
     
     if not name:
         return name
+
+    if nlp_model is None:
+        minor_words = {"a", "o", "as", "os", "e", "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
+                       "por", "para", "com", "sem", "um", "uma", "the", "of", "and", "in", "on", "to", "for", "at", "by"}
+        words = name.split()
+        formatted = [
+            w if (len(w) <= 4 and w.isupper() and any(c.isalpha() for c in w))
+            else (w.capitalize() if (idx == 0 or w.lower() not in minor_words) else w.lower())
+            for idx, w in enumerate(words)
+        ]
+        result = " ".join(formatted).strip()
+        if result:
+            result = result[0].upper() + result[1:]
+        print(f"{get_current_time()} ✅ [SUCCESS] [{func_name}] Completed prettify name logic (rule-based fallback)")
+        return result
 
     original_text = name
     text_for_nlp = name
@@ -781,11 +864,11 @@ def process_file(filepath):
             print(f"{get_current_time()} ℹ️ [LOG] [process_file] O PDF '{filepath.name}' não é uma demanda. Será renomeado com data-hora.")
             return process_and_rename_by_time(filepath)
 
-        print(f"{get_current_time()} 🔴 [ERROR] [process_file] Não foi possível extrair número ou título completo de: {filepath.name}")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_file] Não foi possível extrair número ou título completo de: {filepath.name}")
         return "ERROR"
         
     try:
-        lang_code = detect(titulo)
+        lang_code = detect(titulo) if detect is not None else "xx"
     except Exception:
         lang_code = "xx"
         
@@ -832,22 +915,22 @@ def process_file(filepath):
         if filepath.name != new_filename:
             try:
                 temp_path = filepath.with_name(new_filename + ".tmp")
-                os.rename(filepath, temp_path)
-                os.rename(temp_path, filepath.with_name(new_filename))
+                _safe_rename(filepath, temp_path)
+                _safe_rename(temp_path, filepath.with_name(new_filename))
                 print(f"{get_current_time()} ✅ [SUCCESS] [process_file] Renomeado (ajuste de caixa): '{filepath.name}' -> '{new_filename}'")
                 return "SUCCESS"
             except Exception as e:
-                print(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao ajustar caixa de '{filepath.name}': {e}")
+                log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao ajustar caixa de '{filepath.name}': {e}")
                 return "ERROR"
         return "IGNORED"
         
     try:
         new_filepath = unique_path(filepath.with_name(new_filename))
-        os.rename(filepath, new_filepath)
+        _safe_rename(filepath, new_filepath)
         print(f"{get_current_time()} ✅ [SUCCESS] [process_file] Renomeado: '{filepath.name}' -> '{new_filepath.name}'")
         return "SUCCESS"
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao renomear '{filepath.name}': {e}")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao renomear '{filepath.name}': {e}")
         print(f"{get_current_time()} ℹ️ [LOG] [process_file] How to fix: Check file permissions.")
         return "ERROR"
 
@@ -857,14 +940,25 @@ def filter_eligible_files(directory):
     Filtra os arquivos elegíveis no diretório.
     """
     eligible = []
-    for f in sorted(directory.iterdir()):
-        if not f.is_file():
+    self_name = os.path.basename(__file__)
+    self_bat = os.path.splitext(self_name)[0] + ".bat"
+    try:
+        entries = sorted(directory.iterdir())
+    except OSError as e:
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [filter_eligible_files] Erro ao listar diretório '{directory}': {e}")
+        return [], False
+
+    for f in entries:
+        try:
+            if not f.is_file():
+                continue
+        except OSError:
             continue
         filename = f.name
-        if filename.startswith('!-') or filename.startswith('_') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
+        if filename.startswith('!-') or filename.startswith('_') or filename in (self_name, self_bat) or filename.lower().endswith(('.py', '.url', '.lnk')):
             continue
         eligible.append(f)
-    return eligible
+    return eligible, True
 
 
 def main():
@@ -878,7 +972,9 @@ def main():
     current_dir = Path.cwd()
     print(f"{get_current_time()} ℹ️ [LOG] [main] Iniciando o mapeamento de arquivos no diretório corrente: {current_dir}")
 
-    files_to_process = filter_eligible_files(current_dir)
+    files_to_process, scan_ok = filter_eligible_files(current_dir)
+    if not scan_ok:
+        return 1
     total_files = len(files_to_process)
 
     if total_files == 0:
@@ -901,6 +997,9 @@ def main():
         
         try:
             status = process_file(filepath)
+        except Exception as exc:
+            log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_file] Unexpected error processing '{filepath.name}': {exc}")
+            status = "ERROR"
         finally:
             sys.stdout = old_stdout
             
@@ -914,10 +1013,9 @@ def main():
             print(f"{get_current_time()} ℹ️ [IGNORED] [process_item] File {filepath.name} was ignored.")
             ignored_count += 1
         else:
-            print(f"{get_current_time()} 🔴 [ERROR] [process_item] File {filepath.name} failed.")
+            log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_item] File {filepath.name} failed.")
             failed_count += 1
-            if "🔴 [ERROR]" in output:
-                error_reports.append((filepath.name, output))
+            error_reports.append((filepath.name, output))
 
     print(f"\n{get_current_time()} ✅ [SUCCESS] [main_cycle] Completed directory mapping.")
 
@@ -948,11 +1046,18 @@ def main():
                     f.write("═"*80 + "\n")
                 print(f"\n{get_current_time()} ℹ️ [LOG] Relatório de erros salvo em: {log_filename.name}")
             except Exception as e:
-                print(f"\n{get_current_time()} 🔴 [ERROR] Falha ao salvar o relatório de erros para {fname}: {e}")
+                log_error_line(f"\n{get_current_time()} 🔴 [ERROR] Falha ao salvar o relatório de erros para {fname}: {e}")
         
-    return 1 if error_reports else 0
+    return 1 if failed_count > 0 else 0
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [main] Fatal error: {e}")
+        sys.exit(1)

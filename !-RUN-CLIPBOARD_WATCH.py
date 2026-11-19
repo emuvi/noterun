@@ -6,7 +6,19 @@ import sys
 import time
 import re
 from datetime import datetime
-import pyperclip
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+try:
+    import pyperclip
+except ImportError as e:
+    print(f"🔴 [ERROR] Required library 'pyperclip' is not installed: {e}. Install with: pip install pyperclip", file=sys.stderr)
+    sys.exit(1)
 
 # --- Configuration ---
 ENABLE_REPLACEMENTS = True
@@ -43,7 +55,7 @@ def get_current_time() -> str:
     try:
         return datetime.now().strftime('%H:%M:%S')
     except Exception as e:
-        print(f"🔴 [Error] get_current_time failed: {e}")
+        print(f"🔴 [Error] get_current_time failed: {e}", file=sys.stderr)
         return "00:00:00"
 
 def log_message(message: str) -> None:
@@ -51,28 +63,28 @@ def log_message(message: str) -> None:
     try:
         print(f"[{get_current_time()}] ℹ️ [LOG] {message}")
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}", file=sys.stderr)
 
 def print_step(action: str, message: str) -> None:
     """Prints a step being executed with a visual indicator."""
     try:
         print(f"[{get_current_time()}] 🔹 [STEP] [{action}] {message}")
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] print_step failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] print_step failed: {e}", file=sys.stderr)
 
 def print_success(action: str, message: str) -> None:
     """Prints a success message with a visual indicator."""
     try:
         print(f"[{get_current_time()}] ✅ [SUCCESS] [{action}] {message}")
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] print_success failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] print_success failed: {e}", file=sys.stderr)
 
 def print_error(action: str, message: str) -> None:
-    """Prints an error message with a visual indicator."""
+    """Prints an error message with a visual indicator to stderr."""
     try:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [{action}] {message}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [{action}] {message}", file=sys.stderr)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] print_error failed: {e} - message: {message}")
+        print(f"[{get_current_time()}] 🔴 [Error] print_error failed: {e} - message: {message}", file=sys.stderr)
 
 # --- Core Logic ---
 
@@ -103,16 +115,32 @@ def search_text(text: str) -> str:
     
     return SEARCH_SEPARATOR.join(found_items)
 
-def save_to_file(text: str, directory: str, counter: int) -> None:
-    """Saves the processed text to the output file."""
-    filename = f"{OUTPUT_FILENAME_BASE}_{counter:03d}{OUTPUT_FILE_EXTENSION}"
-    filepath = os.path.join(directory, filename)
-    try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(text)
-        print_success("Save to File", f"Result written to '{filename}'")
-    except Exception as e:
-        print_error("Save to File", f"Failed to write to file '{filename}': {e}")
+def save_to_file(text: str, directory: str, counter: int) -> int:
+    """Saves the processed text to the output file without overwriting existing files."""
+    while True:
+        filename = f"{OUTPUT_FILENAME_BASE}_{counter:03d}{OUTPUT_FILE_EXTENSION}"
+        filepath = os.path.join(directory, filename)
+        if not os.path.exists(filepath):
+            break
+        counter += 1
+
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(text)
+            print_success("Save to File", f"Result written to '{filename}'")
+            return counter
+        except OSError as e:
+            last_error = e
+            if attempt < 3:
+                time.sleep(0.4 * attempt)
+        except Exception as e:
+            last_error = e
+            break
+
+    print_error("Save to File", f"Failed to write to file '{filename}': {last_error}")
+    return counter
 
 def main() -> int:
     current_dir = os.getcwd()
@@ -162,7 +190,7 @@ def main() -> int:
                     
                     if processed_text:
                         clipboard_counter += 1
-                        save_to_file(processed_text, current_dir, clipboard_counter)
+                        clipboard_counter = save_to_file(processed_text, current_dir, clipboard_counter)
                     else:
                         print_step("Processing", "Result is empty, no file saved.")
                     
@@ -190,5 +218,12 @@ def main() -> int:
     return 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print(f"\n[{get_current_time()}] Continuous monitoring stopped by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error("Main", f"Fatal error: {e}")
+        sys.exit(1)

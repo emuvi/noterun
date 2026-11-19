@@ -1,9 +1,27 @@
 import os
 import sys
-import pandas as pd
-from fpdf import FPDF
+import time
+import warnings
 from datetime import datetime
 import traceback
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+try:
+    import pandas as pd
+    from fpdf import FPDF
+except ImportError as e:
+    print(f"🔴 [ERROR] Required library missing: {e}. Install with: pip install pandas fpdf2 openpyxl xlrd odfpy", file=sys.stderr)
+    sys.exit(1)
 
 # Constantes de configuração
 SUPPORTED_EXTENSIONS = ('.xls', '.xlsx', '.xlsm', '.ods', '.odf')
@@ -42,7 +60,8 @@ def print_log(emoji, category, function_name, message):
         function_name (str): The name of the function or step.
         message (str): The message to log.
     """
-    print(f"[{get_current_time()}] {emoji} [{category}] [{function_name}] {message}")
+    stream = sys.stderr if category == "ERROR" else sys.stdout
+    print(f"[{get_current_time()}] {emoji} [{category}] [{function_name}] {message}", file=stream)
 
 def get_col_widths(df):
     """
@@ -97,15 +116,7 @@ def get_excel_files(folder_path):
 def setup_fonts(pdf):
     """
     Configures fonts for the PDF generation, preferring Arial if available.
-    
-    Args:
-        pdf (FPDF): The FPDF instance to configure.
-        
-    Returns:
-        str: The name of the font family selected.
-        
-    Raises:
-        Exception: If font file operations fail or FPDF encounters an error.
+    Falls back to helvetica if Arial cannot be loaded.
     """
     print_log("🔹", "STEP", "setup_fonts", "Starting font configuration")
     try:
@@ -115,11 +126,17 @@ def setup_fonts(pdf):
                 pdf.add_font("Arial", "B", FONT_ARIAL_BOLD)
             print_log("✅", "SUCCESS", "setup_fonts", "Completed font configuration using Arial")
             return "Arial"
-        print_log("✅", "SUCCESS", "setup_fonts", "Completed font configuration using helvetica fallback")
-        return "helvetica"
     except Exception as e:
-        print_log("🔴", "ERROR", "setup_fonts", f"Failed to setup fonts: {e}. Fix by checking font file paths or FPDF font cache.")
-        raise
+        print_log("ℹ️", "LOG", "setup_fonts", f"Arial font unavailable ({e}); falling back to helvetica.")
+    print_log("✅", "SUCCESS", "setup_fonts", "Completed font configuration using helvetica fallback")
+    return "helvetica"
+
+
+def _safe_pdf_text(text: str, font_name: str) -> str:
+    """Ensures text is compatible with the selected PDF font."""
+    if font_name == "helvetica":
+        return text.encode("latin-1", errors="replace").decode("latin-1")
+    return text
 
 def clean_column_names(df):
     """
@@ -162,7 +179,8 @@ def calculate_sheet_dimensions(df, col_widths):
         header_lines = 1
         for i, col in enumerate(df.columns):
             text_w = len(str(col)) * BASE_CHAR_WIDTH_MM + CELL_MARGIN_MM
-            lines = int(text_w / col_widths[i]) + str(col).count('\n') + 1
+            w = max(col_widths[i], 1.0) if i < len(col_widths) else 10.0
+            lines = int(text_w / w) + str(col).count('\n') + 1
             if lines > header_lines:
                 header_lines = lines
         total_height += (header_lines * 8) + 2
@@ -173,7 +191,8 @@ def calculate_sheet_dimensions(df, col_widths):
             for i, item in enumerate(data_row):
                 val = "" if pd.isna(item) else str(item)
                 text_w = len(val) * BASE_CHAR_WIDTH_MM + CELL_MARGIN_MM
-                lines = int(text_w / col_widths[i]) + val.count('\n') + 1
+                w = max(col_widths[i], 1.0) if i < len(col_widths) else 10.0
+                lines = int(text_w / w) + val.count('\n') + 1
                 if lines > row_lines:
                     row_lines = lines
             total_height += (row_lines * 8) + 2
@@ -217,25 +236,48 @@ def write_sheet_to_pdf(pdf, file_name, sheet_name, df, font_name):
         pdf.add_page(format=(total_width, total_height))
         
         pdf.set_font(font_name, style="B", size=14)
-        pdf.cell(0, 10, text=f"Planilha: {file_name} - Aba: {sheet_name}", new_x="LMARGIN", new_y="NEXT", align="L")
+        pdf.cell(0, 10, text=_safe_pdf_text(f"Planilha: {file_name} - Aba: {sheet_name}", font_name), new_x="LMARGIN", new_y="NEXT", align="L")
         pdf.ln(5)
         
         pdf.set_font(font_name, size=10)
         with pdf.table(col_widths=col_widths, text_align="LEFT") as table:
             row = table.row()
             for col in df.columns:
-                row.cell(str(col))
+                row.cell(_safe_pdf_text(str(col), font_name))
             
             for _, data_row in df.iterrows():
                 row = table.row()
                 for item in data_row:
                     val = "" if pd.isna(item) else str(item)
-                    row.cell(val)
+                    row.cell(_safe_pdf_text(val, font_name))
         
         print_log("✅", "SUCCESS", "write_sheet_to_pdf", f"Completed writing sheet {sheet_name}")
     except Exception as e:
         print_log("🔴", "ERROR", "write_sheet_to_pdf", f"Failed to write sheet {sheet_name}: {e}. Fix by checking DataFrame content and FPDF capabilities.")
         raise
+
+def read_excel_resilient(file_path):
+    """Attempts to read all sheets from a spreadsheet using default and fallback engines."""
+    ext = os.path.splitext(file_path)[1].lower()
+    engines = [None]
+    if ext in (".xlsx", ".xlsm"):
+        engines.extend(["openpyxl", "xlrd"])
+    elif ext == ".xls":
+        engines.extend(["xlrd", "openpyxl"])
+    elif ext in (".ods", ".odf"):
+        engines.append("odf")
+
+    last_error = None
+    for engine in engines:
+        try:
+            if engine is None:
+                return pd.read_excel(file_path, sheet_name=None)
+            return pd.read_excel(file_path, sheet_name=None, engine=engine)
+        except Exception as e:
+            last_error = e
+            continue
+    raise last_error
+
 
 def process_single_file(folder_path, file_name):
     """
@@ -246,7 +288,7 @@ def process_single_file(folder_path, file_name):
         file_name (str): The file to process.
         
     Returns:
-        bool: True if processed successfully or skipped naturally, False on error.
+        tuple: (bool success, bool converted).
     """
     print_log("🔹", "STEP", "process_single_file", "Starting")
     print_log("ℹ️", "LOG", "process_single_file", f"Processing: {file_name} with specific_parameters folder_path={folder_path}")
@@ -260,23 +302,30 @@ def process_single_file(folder_path, file_name):
         return True, False
         
     try:
-        sheets_dict = pd.read_excel(file_path, sheet_name=None)
+        sheets_dict = read_excel_resilient(file_path)
         pdf = FPDF()
         font_name = setup_fonts(pdf)
         has_content = False
+        sheet_errors = 0
         
         for sheet_name, df in sheets_dict.items():
             if df.empty and df.columns.empty:
                 print_log("ℹ️", "LOG", "process_single_file", f"Sheet '{sheet_name}' is empty. Ignoring.")
                 continue
             
-            has_content = True
-            write_sheet_to_pdf(pdf, file_name, sheet_name, df, font_name)
+            try:
+                write_sheet_to_pdf(pdf, file_name, sheet_name, df, font_name)
+                has_content = True
+            except Exception as sheet_err:
+                sheet_errors += 1
+                print_log("🔴", "ERROR", "process_single_file", f"Skipping sheet '{sheet_name}' in {file_name} due to error: {sheet_err}")
 
         if has_content:
             pdf.output(pdf_path)
             print_log("✅", "SUCCESS", "process_single_file", f"Completed saving: {os.path.basename(pdf_path)}")
-            return True, True
+            return sheet_errors == 0, True
+        elif sheet_errors > 0:
+            return False, False
         else:
             print_log("ℹ️", "LOG", "process_single_file", f"File {file_name} didn't contain valid data in any sheet.")
             print_log("✅", "SUCCESS", "process_single_file", f"Completed processing empty file {file_name}")
@@ -365,19 +414,39 @@ def main():
         elif DELETE_ORIGIN_FILES is False:
             ans = 'n'
         else:
-            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            try:
+                ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            except (EOFError, KeyboardInterrupt):
+                ans = 'n'
             
         if ans.strip().lower() == 'y':
             for file_name in processed_files:
                 file_path = os.path.join(folder_path, file_name)
-                try:
-                    os.remove(file_path)
-                    print(f"[+] Origin file deleted: {file_name}")
-                except Exception as e:
-                    print(f"[-] Error deleting {file_name}: {e}")
+                deleted = False
+                last_err = None
+                for attempt in range(1, 4):
+                    try:
+                        os.remove(file_path)
+                        print(f"[+] Origin file deleted: {file_name}")
+                        deleted = True
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt < 3:
+                            time.sleep(0.4 * attempt)
+                if not deleted:
+                    failures += 1
+                    print_log("🔴", "ERROR", "main", f"Error deleting {file_name}: {last_err}")
 
     return 1 if failures > 0 else 0
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_log("🔴", "ERROR", "main", f"Fatal error: {e}")
+        sys.exit(1)

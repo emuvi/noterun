@@ -3,7 +3,21 @@
 """Executa uma sequência configurável de requisições GET/POST à API."""
 
 import json
+import sys
+import time
 import urllib.parse
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Imprime mensagem de erro no stderr."""
+    print(message, file=sys.stderr)
 
 
 # =============================================================================
@@ -132,70 +146,104 @@ class SessaoMTLS:
     def __init__(self):
         try:
             import win32com.client
+            self._win32com = win32com.client
         except ImportError as erro:
             raise RuntimeError(
                 "A biblioteca pywin32 é necessária. Instale com: pip install pywin32"
             ) from erro
 
-        self.http = win32com.client.Dispatch(WINHTTP_PROGID)
-        self.http.SetTimeouts(*TIMEOUTS_MS)
+        self._init_http()
         self.cert_path = f"{CERT_STORE}\\{CERT_SUBJECT_CN}"
 
-    def executar(self, request_config):
+    def _init_http(self):
+        self.http = self._win32com.Dispatch(WINHTTP_PROGID)
+        self.http.SetTimeouts(*TIMEOUTS_MS)
+
+    def executar(self, request_config, is_first=False):
         method, url, body, headers = _montar_requisicao(request_config)
-        self.http.Open(method, url, False)
 
-        if IGNORE_SERVER_CERT_ERRORS:
-            _definir_opcao_winhttp(
-                self.http,
-                WINHTTP_OPTION_SSL_ERROR_IGNORE_FLAGS,
-                SSL_ERROR_IGNORE_FLAGS,
-            )
+        last_err = None
+        for attempt in range(1, 3):
+            try:
+                self.http.Open(method, url, False)
 
-        self.http.SetClientCertificate(self.cert_path)
-        if KEEP_ALIVE:
-            headers.setdefault("Connection", "Keep-Alive")
-        for name, value in headers.items():
-            self.http.SetRequestHeader(name, str(value))
+                if IGNORE_SERVER_CERT_ERRORS:
+                    _definir_opcao_winhttp(
+                        self.http,
+                        WINHTTP_OPTION_SSL_ERROR_IGNORE_FLAGS,
+                        SSL_ERROR_IGNORE_FLAGS,
+                    )
 
-        print(f"[*] Enviando {method} para: {url}")
-        print(f"[*] Certificado: {CERT_SUBJECT_CN} (SHA-1: {CERT_THUMBPRINT})")
-        if IGNORE_SERVER_CERT_ERRORS:
-            print("[!] Validação do certificado do servidor está desabilitada.")
-        if request_config is REQUESTS[0]:
-            print("[*] Se necessário, informe o PIN do token A3.\n")
+                self.http.SetClientCertificate(self.cert_path)
+                if KEEP_ALIVE:
+                    headers.setdefault("Connection", "Keep-Alive")
+                for name, value in headers.items():
+                    self.http.SetRequestHeader(name, str(value))
 
-        if body is None:
-            self.http.Send()
-        else:
-            self.http.Send(body)
-        return self.http.Status, self.http.StatusText, self.http.ResponseText
+                if attempt == 1:
+                    print(f"[*] Enviando {method} para: {url}")
+                    print(f"[*] Certificado: {CERT_SUBJECT_CN} (SHA-1: {CERT_THUMBPRINT})")
+                    if IGNORE_SERVER_CERT_ERRORS:
+                        print("[!] Validação do certificado do servidor está desabilitada.")
+                    if is_first:
+                        print("[*] Se necessário, informe o PIN do token A3.\n")
+
+                if body is None:
+                    self.http.Send()
+                else:
+                    self.http.Send(body)
+                return self.http.Status, self.http.StatusText, self.http.ResponseText
+            except Exception as erro:
+                last_err = erro
+                if attempt < 2:
+                    print(f"[*] Erro transitório na requisição (tentativa {attempt}/2). Reiniciando sessão e tentando novamente...")
+                    time.sleep(1.5)
+                    try:
+                        self._init_http()
+                    except Exception:
+                        pass
+                    continue
+        raise last_err
 
 
-def main():
+def main() -> int:
     if not REQUESTS:
         print("Nenhuma chamada configurada em REQUESTS.")
-        return
+        return 0
 
     try:
         sessao = SessaoMTLS()
     except Exception as erro:
-        print(f"[!] Não foi possível iniciar a sessão: {erro}")
-        return
+        print_error(f"[!] Não foi possível iniciar a sessão: {erro}")
+        return 1
 
+    failures = 0
     for numero, request_config in enumerate(REQUESTS, 1):
         descricao = request_config.get("description", f"Chamada {numero}")
         print(f"\n[CHAMADA {numero}/{len(REQUESTS)}] {descricao}")
         try:
-            status, status_text, response_body = sessao.executar(request_config)
+            status, status_text, response_body = sessao.executar(request_config, is_first=(numero == 1))
             print(f"Status HTTP: {status} ({status_text})")
             try:
                 print(json.dumps(json.loads(response_body), indent=2, ensure_ascii=False))
             except (TypeError, ValueError):
                 print(response_body)
+            if isinstance(status, int) and status >= 400:
+                failures += 1
+                print_error(f"[!] Chamada {numero} ({descricao}) retornou HTTP {status} ({status_text})")
         except Exception as erro:
-            print(f"[!] Falha nesta chamada: {erro}")
+            failures += 1
+            print_error(f"[!] Falha na chamada {numero} ({descricao}): {erro}")
+
+    return 1 if failures > 0 else 0
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\n[*] Processo interrompido pelo usuário.")
+        sys.exit(0)
+    except Exception as erro:
+        print_error(f"[!] Erro fatal: {erro}")
+        sys.exit(1)

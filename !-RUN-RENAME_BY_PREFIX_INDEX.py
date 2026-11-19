@@ -4,8 +4,16 @@
 import os
 import sys
 import re
+import time
 from typing import Optional, List, Tuple
 from datetime import datetime
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 # Global variable for the number of zero-padded places in the index
 INDEX_PADDING = 3
@@ -51,13 +59,13 @@ def log_success(func_name: str, message: str) -> None:
 
 def log_error(func_name: str, message: str) -> None:
     """
-    Logs an error occurrence or failure.
+    Logs an error occurrence or failure to stderr.
     
     Args:
         func_name (str): The name of the function generating the log.
         message (str): The error details.
     """
-    print(f"[{get_current_time()}] 🔴 [ERROR] [{func_name}] {message}")
+    print(f"[{get_current_time()}] 🔴 [ERROR] [{func_name}] {message}", file=sys.stderr)
 
 def print_summary_box(total: int, successes: int, failures: int) -> None:
     """
@@ -157,32 +165,36 @@ def rename_file(filepath: str, directory: str, filename: str, index: int, user_p
             log_success(func_name, f"Completed evaluation for '{filename}' without changes.")
             return True
 
-        new_filepath = get_safe_target_path(directory, new_name)
-        final_name = os.path.basename(new_filepath)
-        
-        log_info(func_name, f"Renaming from '{filename}' to '{final_name}'")
-        os.rename(filepath, new_filepath)
-        log_success(func_name, f"Successfully renamed '{filename}' to '{final_name}'")
-        return True
-        
-    except PermissionError as e:
-        log_error(func_name, f"Permission Denied renaming '{filename}': {e}. Ensure file is not in use.")
-    except OSError as e:
-        log_error(func_name, f"OS Error renaming '{filename}': {e}. Check filesystem permissions or path limits.")
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                new_filepath = get_safe_target_path(directory, new_name)
+                final_name = os.path.basename(new_filepath)
+                if attempt == 1:
+                    log_info(func_name, f"Renaming from '{filename}' to '{final_name}'")
+                os.rename(filepath, new_filepath)
+                log_success(func_name, f"Successfully renamed '{filename}' to '{final_name}'")
+                return True
+            except PermissionError as e:
+                last_error = f"Permission Denied renaming '{filename}': {e}. Ensure file is not in use."
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
+            except OSError as e:
+                last_error = f"OS Error renaming '{filename}': {e}. Check filesystem permissions or path limits."
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
+
+        log_error(func_name, last_error or f"Failed renaming '{filename}'.")
+        return False
     except Exception as e:
         log_error(func_name, f"Unexpected error renaming '{filename}': {e}.")
-        
-    return False
+        return False
 
-def filter_eligible_files(directory: str) -> List[str]:
+def filter_eligible_files(directory: str) -> Tuple[List[str], bool]:
     """
     Scans the directory for files that are eligible for renaming.
-    
-    Args:
-        directory (str): The directory to scan.
-        
-    Returns:
-        List[str]: A list of eligible filenames.
     """
     func_name = "filter_eligible_files"
     log_step(func_name, f"Starting scan in directory '{directory}'")
@@ -193,25 +205,31 @@ def filter_eligible_files(directory: str) -> List[str]:
         files = os.listdir(directory)
     except PermissionError as e:
         log_error(func_name, f"Permission Denied accessing directory '{directory}': {e}")
-        return []
+        return [], False
     except Exception as e:
         log_error(func_name, f"Unexpected error accessing directory '{directory}': {e}")
-        return []
+        return [], False
+
+    self_name = os.path.basename(__file__)
+    self_bat = os.path.splitext(self_name)[0] + ".bat"
 
     for filename in files:
         filepath = os.path.join(directory, filename)
         
-        if not os.path.isfile(filepath):
+        try:
+            if not os.path.isfile(filepath):
+                continue
+        except OSError:
             continue
             
         # Ignore system/script files, files starting with _, or .py/.url/.lnk files
-        if filename.startswith('!-') or filename.startswith('_') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
+        if filename.startswith('!-') or filename.startswith('_') or filename in (self_name, self_bat) or filename.lower().endswith(('.py', '.url', '.lnk')):
             continue
             
         eligible_files.append(filename)
         
     log_success(func_name, f"Completed scan. Found {len(eligible_files)} eligible file(s).")
-    return eligible_files
+    return eligible_files, True
 
 def get_max_existing_index(files_to_process: List[str]) -> int:
     """
@@ -297,13 +315,21 @@ def main():
     print("=" * 50)
     log_step(func_name, "Starting main process")
     
-    user_prefix = input("Enter the string to use as prefix: ").strip()
-    if not user_prefix:
-        log_error(func_name, "No prefix entered. Exiting.")
+    try:
+        user_prefix = input("Enter the string to use as prefix: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        log_info(func_name, "Operation canceled by user.")
         return 0
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    files_to_process = filter_eligible_files(script_dir)
+    user_prefix = re.sub(r'[\\/*?:"<>|]', '', user_prefix).strip()
+    if not user_prefix:
+        log_info(func_name, "No valid prefix entered. Exiting.")
+        return 0
+
+    script_dir = os.getcwd()
+    files_to_process, scan_ok = filter_eligible_files(script_dir)
+    if not scan_ok:
+        return 1
     
     if not files_to_process:
         log_info(func_name, "No files to process. Exiting.")
@@ -312,7 +338,12 @@ def main():
         
     # Sort files to ensure consistent indexing (by modification time, oldest first)
     log_step(func_name, "Sorting files by modification time")
-    files_to_process.sort(key=lambda x: os.path.getmtime(os.path.join(script_dir, x)))
+    def _safe_mtime(fname: str) -> float:
+        try:
+            return os.path.getmtime(os.path.join(script_dir, fname))
+        except OSError:
+            return 0.0
+    files_to_process.sort(key=_safe_mtime)
     log_success(func_name, "Files sorted successfully")
     
     max_existing_index = get_max_existing_index(files_to_process)
@@ -330,5 +361,12 @@ def main():
         return 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        log_error("main", f"Fatal error: {e}")
+        sys.exit(1)

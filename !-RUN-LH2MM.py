@@ -6,6 +6,23 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from datetime import datetime
 
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
+
+def sanitize_xml_text(text: str) -> str:
+    """Strips XML 1.0 illegal control characters so XML serialization never fails."""
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+
 # ==============================================================================
 # GLOBAL CONFIGURATION
 # ==============================================================================
@@ -230,24 +247,19 @@ def _add_root_node(map_root, node_attribs, node_stack, level):
 def _add_child_node(node_attribs, node_stack, level, color_index, sober_colors):
     """
     Adds a child node to its appropriate parent in the hierarchy and applies styling.
-    
-    Args:
-        node_attribs (dict): Attributes for the new node.
-        node_stack (dict): Dictionary tracking the current node at each hierarchy level.
-        level (int): The current node's hierarchy level (1 or higher).
-        color_index (int): Index tracking the color to assign to level 1 nodes.
-        sober_colors (list of str): List of available hex colors.
-        
-    Returns:
-        int: Updated color index to be used for the next level 1 node.
+    Falls back to the nearest existing ancestor level if an intermediate level is missing.
     """
     if level == 1:
         node_attribs['POSITION'] = "bottom_or_right" if color_index % 2 == 0 else "top_or_left"
     
-    if (level - 1) not in node_stack:
+    parent_level = level - 1
+    while parent_level >= 0 and parent_level not in node_stack:
+        parent_level -= 1
+
+    if parent_level < 0:
         return color_index
         
-    parent_node = node_stack[level - 1]
+    parent_node = node_stack[parent_level]
     node_elem = ET.SubElement(parent_node, 'node', node_attribs)
     
     if level >= 1:
@@ -271,6 +283,7 @@ def convert_text_to_freeplane_xml(text_content):
         str: A pretty-printed XML string compatible with Freeplane.
     """
     print(f"{get_current_time()} 🔹 [STEP] convert_text_to_freeplane_xml Starting text conversion")
+    text_content = sanitize_xml_text(text_content)
     lines = text_content.strip().split('\n')
     
     map_root = ET.Element('map', {'version': 'freeplane 1.12.15'})
@@ -296,13 +309,29 @@ def convert_text_to_freeplane_xml(text_content):
         if level == 0:
             _add_root_node(map_root, node_attribs, node_stack, level)
         else:
+            if 0 not in node_stack:
+                _add_root_node(map_root, _create_node_attributes("Root"), node_stack, 0)
             color_index = _add_child_node(node_attribs, node_stack, level, color_index, sober_colors)
             
     raw_xml = ET.tostring(map_root, 'utf-8')
-    reparsed = minidom.parseString(raw_xml)
+    try:
+        reparsed = minidom.parseString(raw_xml)
+        pretty = '\n'.join([line for line in reparsed.toprettyxml(indent="  ").split('\n') if line.strip()])
+    except Exception:
+        pretty = raw_xml.decode('utf-8', errors='replace')
     print(f"{get_current_time()} ✅ [SUCCESS] convert_text_to_freeplane_xml Completed XML tree building")
-    # Remove as linhas em branco que o minidom pode adicionar
-    return '\n'.join([line for line in reparsed.toprettyxml(indent="  ").split('\n') if line.strip()])
+    return pretty
+
+def _read_text_with_fallback(filename):
+    """Reads text file trying utf-8, utf-8-sig, cp1252, and latin-1 encodings."""
+    for enc in ('utf-8', 'utf-8-sig', 'cp1252', 'latin-1'):
+        try:
+            with open(filename, 'r', encoding=enc) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+    with open(filename, 'r', encoding='utf-8', errors='replace') as f:
+        return f.read()
 
 def process_file(filename):
     """
@@ -316,8 +345,7 @@ def process_file(filename):
     """
     print(f"{get_current_time()} 🔹 [STEP] process_file Starting with filename={filename}")
     try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = _read_text_with_fallback(filename)
             
         xml_content = convert_text_to_freeplane_xml(content)
         
@@ -330,7 +358,7 @@ def process_file(filename):
         print(f"{get_current_time()} ✅ [SUCCESS] process_file {filename} convertido para {mm_filename}")
         return True
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] process_file Failed to process {filename}: {str(e)}")
+        print_error(f"{get_current_time()} 🔴 [ERROR] process_file Failed to process {filename}: {str(e)}")
         print(f"{get_current_time()} ℹ️ [LOG] process_file Please check file encoding, permissions or format for {filename}")
         return False
 
@@ -364,7 +392,11 @@ def main():
     cwd = os.getcwd()
     print(f"{get_current_time()} ℹ️ [LOG] main Resolving runtime context: {cwd}")
     
-    lh_files = [f for f in os.listdir(cwd) if f.endswith('.lh')]
+    try:
+        lh_files = [f for f in os.listdir(cwd) if f.lower().endswith('.lh')]
+    except OSError as e:
+        print_error(f"{get_current_time()} 🔴 [ERROR] main Failed to list directory '{cwd}': {e}")
+        return 1
     
     if not lh_files:
         print(f"{get_current_time()} ℹ️ [LOG] main Nenhum arquivo .lh encontrado na pasta atual.")
@@ -389,7 +421,7 @@ def main():
             print(f"{get_current_time()} ✅ [SUCCESS] main File {filename} successfully converted")
         else:
             failure_count += 1
-            print(f"{get_current_time()} 🔴 [ERROR] main File {filename} conversion failed")
+            print_error(f"{get_current_time()} 🔴 [ERROR] main File {filename} conversion failed")
             
     print_summary_box(total_files, success_count, failure_count)
     print(f"{get_current_time()} ✅ [SUCCESS] main Completed directory processing")
@@ -400,18 +432,38 @@ def main():
         elif DELETE_ORIGIN_FILES is False:
             ans = 'n'
         else:
-            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            try:
+                ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            except (EOFError, KeyboardInterrupt):
+                ans = 'n'
             
         if ans.strip().lower() == 'y':
             for fp in processed_files:
-                try:
-                    os.remove(fp)
-                    print(f"[+] Arquivo de origem excluído: {fp}")
-                except Exception as e:
-                    print(f"[-] Erro ao excluir {fp}: {e}")
+                deleted = False
+                last_err = None
+                for attempt in range(1, 4):
+                    try:
+                        os.remove(fp)
+                        print(f"[+] Arquivo de origem excluído: {fp}")
+                        deleted = True
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt < 3:
+                            time.sleep(0.4 * attempt)
+                if not deleted:
+                    failure_count += 1
+                    print_error(f"[-] Erro ao excluir {fp}: {last_err}")
 
     return 1 if failure_count > 0 else 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

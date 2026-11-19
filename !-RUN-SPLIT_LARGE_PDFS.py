@@ -1,10 +1,35 @@
 # Copyright (c) 2026 emuvi
 # SPDX-License-Identifier: MIT
 
+import io
+import logging
 import os
 import sys
-import io
-from pypdf import PdfReader, PdfWriter
+import time
+import warnings
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
+
+try:
+    from pypdf import PdfReader, PdfWriter
+except ImportError as e:
+    print_error(f"[-] Required library 'pypdf' is not installed: {e}. Install with: pip install pypdf")
+    sys.exit(1)
 
 # ==============================================================================
 # CONFIGURAÇÕES (Settings)
@@ -43,14 +68,19 @@ def process_pdf(filepath: str, directory: str, filename: str) -> bool:
     try:
         with open(filepath, "rb") as f_in:
             reader = PdfReader(f_in)
+            if getattr(reader, "is_encrypted", False):
+                try:
+                    reader.decrypt("")
+                except Exception:
+                    pass
             total_pages = len(reader.pages)
             
             if total_pages == 0:
-                print(f"[-] '{filename}' has 0 pages. Skipping.")
+                print_error(f"[-] '{filename}' has 0 pages. Skipping.")
                 return False
                 
             if total_pages == 1:
-                print(f"[-] '{filename}' is a single page over {MAX_SIZE_MB}MB. Cannot split.")
+                print_error(f"[-] '{filename}' is a single page over {MAX_SIZE_MB}MB. Cannot split.")
                 return False
                 
             avg_page_size = file_size / total_pages
@@ -127,6 +157,11 @@ def process_pdf(filepath: str, directory: str, filename: str) -> bool:
                 base_name, ext = os.path.splitext(filename)
                 out_filename = f"{base_name} ({part_num:03d}){ext}"
                 out_filepath = os.path.join(directory, out_filename)
+                dup_counter = 2
+                while os.path.exists(out_filepath):
+                    out_filename = f"{base_name} ({part_num:03d}) ({dup_counter}){ext}"
+                    out_filepath = os.path.join(directory, out_filename)
+                    dup_counter += 1
                 
                 if best_writer is None:
                     raise RuntimeError(f"Could not determine a valid split for {filename} at page {start_page}")
@@ -148,17 +183,17 @@ def process_pdf(filepath: str, directory: str, filename: str) -> bool:
             if total_pages_written == total_pages:
                 success = True
             else:
-                print(f"[-] Page count mismatch: expected {total_pages}, got {total_pages_written}")
+                print_error(f"[-] Page count mismatch: expected {total_pages}, got {total_pages_written}")
                 success = False
 
     except Exception as e:
-        print(f"[-] Unexpected error splitting '{filename}': {e}")
+        print_error(f"[-] Unexpected error splitting '{filename}': {e}")
         # Clean up any partial files if there was an error
         for fp, _ in generated_files:
             if os.path.exists(fp):
                 try:
                     os.remove(fp)
-                except:
+                except OSError:
                     pass
         return False
         
@@ -168,31 +203,45 @@ def process_pdf(filepath: str, directory: str, filename: str) -> bool:
             
     return False
 
-def filter_eligible_pdfs(directory: str) -> list:
+def filter_eligible_pdfs(directory: str) -> tuple:
     """
     Scans the directory for PDF files that might need splitting.
     """
     print(f"[*] Scanning directory '{directory}' for PDF files...")
     eligible_files = []
     
-    for filename in os.listdir(directory):
+    try:
+        entries = os.listdir(directory)
+    except PermissionError as e:
+        print_error(f"[-] Permission Denied accessing directory '{directory}': {e}")
+        return [], False
+    except Exception as e:
+        print_error(f"[-] Unexpected error accessing directory '{directory}': {e}")
+        return [], False
+
+    for filename in entries:
         filepath = os.path.join(directory, filename)
         
-        if os.path.isfile(filepath) and filename.lower().endswith('.pdf'):
-            if filename.startswith('!-') or filename.startswith('_'):
-                continue
-            eligible_files.append((directory, filename))
+        try:
+            if os.path.isfile(filepath) and filename.lower().endswith('.pdf'):
+                if filename.startswith('!-') or filename.startswith('_'):
+                    continue
+                eligible_files.append((directory, filename))
+        except OSError:
+            continue
             
     print(f"[+] Found {len(eligible_files)} PDF file(s) for evaluation.\n")
-    return eligible_files
+    return eligible_files, True
 
 def main():
     print("=" * 50)
     print("   Noterun Split Large PDFs Script Initialized")
     print("=" * 50)
     
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    files_to_process = filter_eligible_pdfs(script_dir)
+    script_dir = os.getcwd()
+    files_to_process, scan_ok = filter_eligible_pdfs(script_dir)
+    if not scan_ok:
+        return 1
     
     if not files_to_process:
         print("[*] No PDF files to process. Exiting.")
@@ -207,7 +256,12 @@ def main():
     
     for dirpath, filename in files_to_process:
         filepath = os.path.join(dirpath, filename)
-        file_size = os.path.getsize(filepath)
+        try:
+            file_size = os.path.getsize(filepath)
+        except OSError as e:
+            print_error(f"[-] Could not retrieve size for '{filename}': {e}")
+            failure_count += 1
+            continue
         
         if file_size < MAX_SIZE_MB * 1024 * 1024:
             skipped_count += 1
@@ -225,7 +279,7 @@ def main():
     print(f"[*] Skipped (already under {MAX_SIZE_MB}MB): {skipped_count}")
     
     if failure_count > 0:
-        print(f"[-] Errors encountered: {failure_count}")
+        print_error(f"[-] Errors encountered: {failure_count}")
     else:
         print("[+] Process finished without errors!")
 
@@ -235,18 +289,38 @@ def main():
         elif DELETE_ORIGIN_FILES is False:
             ans = 'n'
         else:
-            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            try:
+                ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            except (EOFError, KeyboardInterrupt):
+                ans = 'n'
             
         if ans.strip().lower() == 'y':
             for fp in processed_files:
-                try:
-                    os.remove(fp)
-                    print(f"[+] Origin file deleted: {os.path.basename(fp)}")
-                except Exception as e:
-                    print(f"[-] Error deleting {os.path.basename(fp)}: {e}")
+                deleted = False
+                last_err = None
+                for attempt in range(1, 4):
+                    try:
+                        os.remove(fp)
+                        print(f"[+] Origin file deleted: {os.path.basename(fp)}")
+                        deleted = True
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt < 3:
+                            time.sleep(0.4 * attempt)
+                if not deleted:
+                    failure_count += 1
+                    print_error(f"[-] Error deleting {os.path.basename(fp)}: {last_err}")
 
     return 1 if failure_count > 0 else 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

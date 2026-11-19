@@ -2,13 +2,30 @@ import os
 import re
 import sys
 import shutil
+import time
 import traceback
+import warnings
 from datetime import datetime
 from typing import Optional, Tuple, List
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QDragEnterEvent, QDropEvent
-from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QWidget
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+os.environ.setdefault("QT_LOGGING_RULES", "*.debug=false;*.info=false;*.warning=false")
+
+try:
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtGui import QDragEnterEvent, QDropEvent
+    from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QWidget
+except ImportError as e:
+    print(f"🔴 [ERROR] Required library 'PyQt5' is not installed: {e}. Install with: pip install PyQt5", file=sys.stderr)
+    sys.exit(1)
 
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
@@ -19,7 +36,7 @@ def get_current_time() -> str:
     try:
         return datetime.now().strftime('%H:%M:%S')
     except Exception as e:
-        print(f"🔴 [ERROR] [get_current_time] get_current_time failed: {e}")
+        print(f"🔴 [ERROR] [get_current_time] get_current_time failed: {e}", file=sys.stderr)
         return "00:00:00"
 
 def log_info(func_name: str, message: str) -> None:
@@ -28,7 +45,7 @@ def log_info(func_name: str, message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [log_info] log_info failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [log_info] log_info failed: {e}", file=sys.stderr)
 
 def log_step(func_name: str, message: str) -> None:
     try:
@@ -36,7 +53,7 @@ def log_step(func_name: str, message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [log_step] log_step failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [log_step] log_step failed: {e}", file=sys.stderr)
 
 def log_success(func_name: str, message: str) -> None:
     try:
@@ -44,15 +61,15 @@ def log_success(func_name: str, message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [log_success] log_success failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [log_success] log_success failed: {e}", file=sys.stderr)
 
 def log_error(func_name: str, message: str) -> None:
     try:
         msg = f"[{get_current_time()}] 🔴 [ERROR] [{func_name}] {message}"
-        print(msg)
+        print(msg, file=sys.stderr)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [log_error] log_error failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [log_error] log_error failed: {e}", file=sys.stderr)
 
 def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
     func_name = "print_summary_box"
@@ -80,14 +97,14 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     base_name, ext = os.path.splitext(file_path)
     errors_dir = os.path.join(current_dir, "!-ERRORS")
     os.makedirs(errors_dir, exist_ok=True)
-    error_path = os.path.join(errors_dir, file_path)
+    error_path = get_safe_target_path(errors_dir, file_path)
 
     try:
         shutil.move(os.path.join(current_dir, file_path), error_path)
         log_success(func_name, f"Moved main file to '!-ERRORS'")
         
         # Save the error log
-        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        log_file_path = get_safe_target_path(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
         log_success(func_name, f"Saved error log to '{log_file_path}'")
@@ -241,12 +258,22 @@ class DropZone(QLabel):
                 new_filepath = get_safe_target_path(directory, new_name)
                 log_step(func_name, f"Renaming to '{os.path.basename(new_filepath)}'")
                 
-                try:
-                    os.rename(file_path, new_filepath)
-                    log_success(func_name, f"Successfully renamed file.")
-                    cycle_success = 1
-                except Exception as rename_e:
-                    error_msg = f"Failed to rename file: {rename_e}"
+                renamed = False
+                last_rename_err = None
+                for attempt in range(1, 4):
+                    try:
+                        new_filepath = get_safe_target_path(directory, new_name)
+                        os.rename(file_path, new_filepath)
+                        log_success(func_name, f"Successfully renamed file.")
+                        cycle_success = 1
+                        renamed = True
+                        break
+                    except Exception as rename_e:
+                        last_rename_err = rename_e
+                        if attempt < 3:
+                            time.sleep(0.4 * attempt)
+                if not renamed:
+                    error_msg = f"Failed to rename file: {last_rename_err}"
                     log_error(func_name, error_msg)
                     handle_file_error(filename, directory, error_msg)
                     cycle_fail = 1
@@ -314,6 +341,8 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [main] Process interrupted by user. Exiting.")
+        print(f"[{get_current_time()}] ℹ️ [LOG] [main] Process interrupted by user. Exiting.")
+        sys.exit(0)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [main] Fatal error: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [main] Fatal error: {e}", file=sys.stderr)
+        sys.exit(1)

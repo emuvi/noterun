@@ -4,6 +4,20 @@
 import os
 import shutil
 import sys
+import time
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
 
 def get_safe_target_path(target_dir: str, filename: str) -> str:
     """
@@ -41,28 +55,39 @@ def move_file(source_path: str, target_dir: str) -> bool:
         bool: True if the file was moved successfully, False otherwise.
     """
     filename = os.path.basename(source_path)
-    target_path = get_safe_target_path(target_dir, filename)
-    
-    print(f"[*] Moving '{filename}'...")
-    print(f"    Source: {source_path}")
-    print(f"    Target: {target_path}")
-    
-    try:
-        shutil.move(source_path, target_path)
-        print(f"[+] Successfully moved '{filename}'.\n")
-        return True
-    except PermissionError as e:
-        print(f"[-] Permission Denied while moving '{filename}': {e}\n")
-    except FileNotFoundError as e:
-        print(f"[-] File Not Found Error for '{filename}': {e}\n")
-    except OSError as e:
-        print(f"[-] OS Error while moving '{filename}': {e}\n")
-    except Exception as e:
-        print(f"[-] An unexpected error occurred while moving '{filename}': {e}\n")
-        
+    last_error = None
+
+    for attempt in range(1, 4):
+        target_path = get_safe_target_path(target_dir, filename)
+        if attempt == 1:
+            print(f"[*] Moving '{filename}'...")
+            print(f"    Source: {source_path}")
+            print(f"    Target: {target_path}")
+        try:
+            shutil.move(source_path, target_path)
+            print(f"[+] Successfully moved '{filename}'.\n")
+            return True
+        except FileNotFoundError as e:
+            print_error(f"[-] File Not Found Error for '{filename}': {e}\n")
+            return False
+        except PermissionError as e:
+            last_error = f"Permission Denied while moving '{filename}': {e}"
+            if attempt < 3:
+                time.sleep(0.4 * attempt)
+                continue
+        except OSError as e:
+            last_error = f"OS Error while moving '{filename}': {e}"
+            if attempt < 3:
+                time.sleep(0.4 * attempt)
+                continue
+        except Exception as e:
+            last_error = f"An unexpected error occurred while moving '{filename}': {e}"
+            break
+
+    print_error(f"[-] {last_error}\n")
     return False
 
-def filter_eligible_files(directory: str) -> list:
+def filter_eligible_files(directory: str) -> tuple:
     """
     Filters files in the given directory to find those eligible for moving.
     Ignores directories, the script itself, and files starting with '!-'.
@@ -71,7 +96,7 @@ def filter_eligible_files(directory: str) -> list:
         directory (str): The directory to scan.
         
     Returns:
-        list: A list of filenames eligible to be moved.
+        tuple: (list of eligible filenames, bool indicating whether scanning succeeded)
     """
     print(f"[*] Scanning directory '{directory}' for files to move...")
     eligible_files = []
@@ -79,28 +104,34 @@ def filter_eligible_files(directory: str) -> list:
     try:
         files = os.listdir(directory)
     except PermissionError as e:
-        print(f"[-] Permission Denied accessing directory '{directory}': {e}")
-        return []
+        print_error(f"[-] Permission Denied accessing directory '{directory}': {e}")
+        return [], False
     except Exception as e:
-        print(f"[-] Unexpected error accessing directory '{directory}': {e}")
-        return []
+        print_error(f"[-] Unexpected error accessing directory '{directory}': {e}")
+        return [], False
+
+    self_name = os.path.basename(__file__)
+    self_bat = os.path.splitext(self_name)[0] + ".bat"
 
     for filename in files:
         filepath = os.path.join(directory, filename)
 
         # Only process files
-        if not os.path.isfile(filepath):
+        try:
+            if not os.path.isfile(filepath):
+                continue
+        except OSError:
             continue
 
         # Skip system/script files or files explicitly marked with '!-RUN' or similar
-        if filename.startswith('!-') or filename == os.path.basename(__file__):
+        if filename.startswith('!-') or filename in (self_name, self_bat):
             print(f"[*] Skipping excluded script or system file: '{filename}'")
             continue
 
         eligible_files.append(filename)
         
     print(f"[+] Found {len(eligible_files)} eligible file(s) to move.\n")
-    return eligible_files
+    return eligible_files, True
 
 def main():
     """
@@ -111,13 +142,19 @@ def main():
     print("   Noterun Move to Parent Script Initialized")
     print("=" * 50)
     
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir = os.getcwd()
     parent_dir = os.path.dirname(script_dir)
     
     print(f"[*] Current Directory: {script_dir}")
     print(f"[*] Target Parent Directory: {parent_dir}\n")
 
-    files_to_move = filter_eligible_files(script_dir)
+    if os.path.abspath(script_dir) == os.path.abspath(parent_dir):
+        print_error("[-] Current directory has no parent directory (filesystem root). Aborting.")
+        return 1
+
+    files_to_move, scan_ok = filter_eligible_files(script_dir)
+    if not scan_ok:
+        return 1
     
     if not files_to_move:
         print("[*] No files to move. Exiting.")
@@ -140,12 +177,19 @@ def main():
     print(f"[+] Successful moves: {success_count}")
     
     if failure_count > 0:
-        print(f"[-] Failed moves: {failure_count}")
+        print_error(f"[-] Failed moves: {failure_count}")
         return 1
     else:
         print("[+] All files moved successfully!")
         return 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

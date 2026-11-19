@@ -5,7 +5,21 @@ import os
 import datetime
 import sys
 import re
+import time
 from typing import Optional, Tuple
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
 
 # Configuration for string/regex replacements
 # List of tuples: (pattern, replacement, is_regex)
@@ -18,28 +32,25 @@ REPLACEMENTS = [
 
 def get_file_time(filepath: str) -> Optional[datetime.datetime]:
     """
-    Retrieves the file's creation time, falling back to modification time if necessary.
-    
-    Args:
-        filepath (str): The absolute path to the file.
-        
-    Returns:
-        datetime.datetime: The parsed datetime object, or None if an error occurs.
+    Retrieves the file's modification time, falling back safely if timestamps are invalid.
     """
     try:
         stat = os.stat(filepath)
     except OSError as e:
-        print(f"[-] OS Error getting file time for '{os.path.basename(filepath)}': {e}")
+        print_error(f"[-] OS Error getting file time for '{os.path.basename(filepath)}': {e}")
         return None
     except Exception as e:
-        print(f"[-] Unexpected error getting file time for '{os.path.basename(filepath)}': {e}")
+        print_error(f"[-] Unexpected error getting file time for '{os.path.basename(filepath)}': {e}")
         return None
 
-    try:
-        # Prioritize modification time over creation time
-        return datetime.datetime.fromtimestamp(stat.st_mtime)
-    except AttributeError:
-        return datetime.datetime.fromtimestamp(stat.st_ctime)
+    for ts_attr in ("st_mtime", "st_ctime"):
+        ts = getattr(stat, ts_attr, None)
+        if ts is not None:
+            try:
+                return datetime.datetime.fromtimestamp(ts)
+            except (OSError, OverflowError, ValueError):
+                continue
+    return datetime.datetime.now()
 
 def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, Optional[str]]:
     """
@@ -157,10 +168,10 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
             if old_name_part != name_part:
                 replacements_made.append((pattern, repl))
         except Exception as e:
-            print(f"[-] Error applying replacement '{pattern}' to '{name_part}': {e}")
+            print_error(f"[-] Error applying replacement '{pattern}' to '{name_part}': {e}")
             
-    # Clean up leading/trailing spaces
-    name_part = name_part.strip()
+    # Clean up invalid Windows chars and leading/trailing spaces/dots
+    name_part = re.sub(r'[\\/*?:"<>|]', '', name_part).strip(" .")
     
     # If name_part becomes empty after replacements, provide a default
     if not name_part:
@@ -218,39 +229,42 @@ def rename_file(filepath: str, directory: str, filename: str) -> bool:
             print(f"    Reason: {skip_reason}\n")
             return True
 
-        new_filepath = get_safe_target_path(directory, new_name)
-        final_name = os.path.basename(new_filepath)
-        
-        print(f"[*] Renaming file...")
-        print(f"    From: '{filename}'")
-        print(f"    To:   '{final_name}'")
-        if replacements_made:
-            print(f"    Replacements applied:")
-            for pat, rep in replacements_made:
-                print(f"      - '{pat}' -> '{rep}'")
-        
-        os.rename(filepath, new_filepath)
-        print(f"[+] Successfully renamed '{filename}'.\n")
-        return True
-        
-    except PermissionError as e:
-        print(f"[-] Permission Denied renaming '{filename}': {e}\n")
-    except OSError as e:
-        print(f"[-] OS Error renaming '{filename}': {e}\n")
-    except Exception as e:
-        print(f"[-] Unexpected error renaming '{filename}': {e}\n")
-        
-    return False
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                new_filepath = get_safe_target_path(directory, new_name)
+                final_name = os.path.basename(new_filepath)
+                if attempt == 1:
+                    print(f"[*] Renaming file...")
+                    print(f"    From: '{filename}'")
+                    print(f"    To:   '{final_name}'")
+                    if replacements_made:
+                        print(f"    Replacements applied:")
+                        for pat, rep in replacements_made:
+                            print(f"      - '{pat}' -> '{rep}'")
+                os.rename(filepath, new_filepath)
+                print(f"[+] Successfully renamed '{filename}'.\n")
+                return True
+            except PermissionError as e:
+                last_error = f"Permission Denied renaming '{filename}': {e}"
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
+            except OSError as e:
+                last_error = f"OS Error renaming '{filename}': {e}"
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
 
-def filter_eligible_files(directory: str) -> list:
+        print_error(f"[-] {last_error}\n")
+        return False
+    except Exception as e:
+        print_error(f"[-] Unexpected error renaming '{filename}': {e}\n")
+        return False
+
+def filter_eligible_files(directory: str) -> tuple:
     """
     Scans the directory for files that are eligible for renaming.
-    
-    Args:
-        directory (str): The directory to scan.
-        
-    Returns:
-        list: A list of eligible filenames.
     """
     print(f"[*] Scanning directory '{directory}' for files to rename...")
     eligible_files = []
@@ -258,26 +272,32 @@ def filter_eligible_files(directory: str) -> list:
     try:
         files = os.listdir(directory)
     except PermissionError as e:
-        print(f"[-] Permission Denied accessing directory '{directory}': {e}")
-        return []
+        print_error(f"[-] Permission Denied accessing directory '{directory}': {e}")
+        return [], False
     except Exception as e:
-        print(f"[-] Unexpected error accessing directory '{directory}': {e}")
-        return []
+        print_error(f"[-] Unexpected error accessing directory '{directory}': {e}")
+        return [], False
+
+    self_name = os.path.basename(__file__)
+    self_bat = os.path.splitext(self_name)[0] + ".bat"
 
     for filename in files:
         filepath = os.path.join(directory, filename)
         
-        if not os.path.isfile(filepath):
+        try:
+            if not os.path.isfile(filepath):
+                continue
+        except OSError:
             continue
             
         # Ignore system/script files, files starting with _, or .py/.url/.lnk files
-        if filename.startswith('!-') or filename.startswith('_') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
+        if filename.startswith('!-') or filename.startswith('_') or filename in (self_name, self_bat) or filename.lower().endswith(('.py', '.url', '.lnk')):
             continue
             
         eligible_files.append(filename)
         
     print(f"[+] Found {len(eligible_files)} eligible file(s) for renaming evaluation.\n")
-    return eligible_files
+    return eligible_files, True
 
 def main():
     """
@@ -288,8 +308,10 @@ def main():
     print("   Noterun Date-Based Rename & Replace Script Initialized")
     print("=" * 60)
     
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    files_to_process = filter_eligible_files(script_dir)
+    script_dir = os.getcwd()
+    files_to_process, scan_ok = filter_eligible_files(script_dir)
+    if not scan_ok:
+        return 1
     
     if not files_to_process:
         print("[*] No files to process. Exiting.")
@@ -312,12 +334,19 @@ def main():
     print(f"[+] Processed successfully: {success_count}")
     
     if failure_count > 0:
-        print(f"[-] Errors encountered: {failure_count}")
+        print_error(f"[-] Errors encountered: {failure_count}")
         return 1
     else:
         print("[+] All files processed without errors!")
         return 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

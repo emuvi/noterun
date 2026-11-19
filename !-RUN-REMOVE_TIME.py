@@ -8,6 +8,18 @@ import time
 import datetime
 from typing import Optional, Tuple, List
 
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
 def get_current_time() -> str:
     """
     Returns the current local time formatted as [HH:MM:SS].
@@ -130,33 +142,36 @@ def rename_file(filepath: str, directory: str, filename: str) -> bool:
             print(f"{get_current_time()} ✅ [SUCCESS] [rename_file] Completed gracefully without changes")
             return True
 
-        new_filepath = get_safe_target_path(directory, new_name)
-        final_name = os.path.basename(new_filepath)
-        
-        print(f"{get_current_time()} ℹ️ [LOG] Renaming file from '{filename}' to '{final_name}'")
-        
-        os.rename(filepath, new_filepath)
-        print(f"{get_current_time()} ✅ [SUCCESS] [rename_file] Successfully renamed '{filename}' to '{final_name}'")
-        return True
-        
-    except PermissionError as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [rename_file] Permission Denied renaming '{filename}': {e}. Fix: Check if the file is open in another program and ensure you have write permissions.")
-    except OSError as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [rename_file] OS Error renaming '{filename}': {e}. Fix: Verify path validity and disk space.")
-    except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [rename_file] Unexpected error renaming '{filename}': {e}. Fix: Check logs for further details.")
-        
-    return False
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                new_filepath = get_safe_target_path(directory, new_name)
+                final_name = os.path.basename(new_filepath)
+                if attempt == 1:
+                    print(f"{get_current_time()} ℹ️ [LOG] Renaming file from '{filename}' to '{final_name}'")
+                os.rename(filepath, new_filepath)
+                print(f"{get_current_time()} ✅ [SUCCESS] [rename_file] Successfully renamed '{filename}' to '{final_name}'")
+                return True
+            except PermissionError as e:
+                last_error = f"Permission Denied renaming '{filename}': {e}. Fix: Check if the file is open in another program and ensure you have write permissions."
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
+            except OSError as e:
+                last_error = f"OS Error renaming '{filename}': {e}. Fix: Verify path validity and disk space."
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
 
-def filter_eligible_files(directory: str) -> List[str]:
+        print_error(f"{get_current_time()} 🔴 [ERROR] [rename_file] {last_error}")
+        return False
+    except Exception as e:
+        print_error(f"{get_current_time()} 🔴 [ERROR] [rename_file] Unexpected error renaming '{filename}': {e}. Fix: Check logs for further details.")
+        return False
+
+def filter_eligible_files(directory: str) -> Tuple[List[str], bool]:
     """
     Scans the directory for files that are eligible for renaming.
-    
-    Args:
-        directory (str): The directory path to scan.
-        
-    Returns:
-        List[str]: A list of eligible filenames found in the directory.
     """
     print(f"{get_current_time()} 🔹 [STEP] [filter_eligible_files] Starting - directory: '{directory}'")
     eligible_files = []
@@ -164,26 +179,32 @@ def filter_eligible_files(directory: str) -> List[str]:
     try:
         files = os.listdir(directory)
     except PermissionError as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [filter_eligible_files] Permission Denied accessing directory '{directory}': {e}. Fix: Ensure you have read permissions for the directory.")
-        return []
+        print_error(f"{get_current_time()} 🔴 [ERROR] [filter_eligible_files] Permission Denied accessing directory '{directory}': {e}. Fix: Ensure you have read permissions for the directory.")
+        return [], False
     except Exception as e:
-        print(f"{get_current_time()} 🔴 [ERROR] [filter_eligible_files] Unexpected error accessing directory '{directory}': {e}. Fix: Verify directory path and system state.")
-        return []
+        print_error(f"{get_current_time()} 🔴 [ERROR] [filter_eligible_files] Unexpected error accessing directory '{directory}': {e}. Fix: Verify directory path and system state.")
+        return [], False
+
+    self_name = os.path.basename(__file__)
+    self_bat = os.path.splitext(self_name)[0] + ".bat"
 
     for filename in files:
         filepath = os.path.join(directory, filename)
         
-        if not os.path.isfile(filepath):
+        try:
+            if not os.path.isfile(filepath):
+                continue
+        except OSError:
             continue
             
         # Ignore system/script files or .py/.url/.lnk files
-        if filename.startswith('!-') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
+        if filename.startswith('!-') or filename in (self_name, self_bat) or filename.lower().endswith(('.py', '.url', '.lnk')):
             continue
             
         eligible_files.append(filename)
         
     print(f"{get_current_time()} ✅ [SUCCESS] [filter_eligible_files] Found {len(eligible_files)} eligible file(s) for renaming evaluation")
-    return eligible_files
+    return eligible_files, True
 
 def print_summary_box(total: int, successes: int, failures: int) -> None:
     """
@@ -216,8 +237,10 @@ def main() -> int:
     print(f"{get_current_time()} 🔹 [STEP] [main] Noterun Remove-Time Rename Script Initialized")
     print("=" * 50)
     
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    files_to_process = filter_eligible_files(script_dir)
+    script_dir = os.getcwd()
+    files_to_process, scan_ok = filter_eligible_files(script_dir)
+    if not scan_ok:
+        return 1
     
     if not files_to_process:
         print(f"{get_current_time()} ℹ️ [LOG] No eligible files to process. Exiting.")
@@ -244,12 +267,19 @@ def main() -> int:
     print_summary_box(total_files, success_count, failure_count)
     
     if failure_count > 0:
-        print(f"{get_current_time()} 🔴 [ERROR] [main] Completed with {failure_count} errors")
+        print_error(f"{get_current_time()} 🔴 [ERROR] [main] Completed with {failure_count} errors")
         return 1
     else:
         print(f"{get_current_time()} ✅ [SUCCESS] [main] All files processed without errors!")
         return 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"{get_current_time()} 🔴 [ERROR] [main] Fatal error: {e}")
+        sys.exit(1)

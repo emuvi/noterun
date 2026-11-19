@@ -1,6 +1,15 @@
 import re
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 OUTPUT_FILENAME = "!-LIST_ALL_DEMANDS.txt"
@@ -34,17 +43,21 @@ def collect_latest_demands(directory):
     latest_by_number = {}
 
     for filepath in directory.iterdir():
-        if not filepath.is_file() or filepath.suffix.lower() != ".pdf":
-            continue
+        try:
+            if not filepath.is_file() or filepath.suffix.lower() != ".pdf":
+                continue
 
-        record = parse_demand_filename(filepath.name)
-        if record is None:
-            continue
+            record = parse_demand_filename(filepath.name)
+            if record is None:
+                continue
 
-        parsed_timestamp, _, number, _ = record
-        current = latest_by_number.get(number)
-        if current is None or parsed_timestamp >= current[0]:
-            latest_by_number[number] = record
+            parsed_timestamp, _, number, _ = record
+            current = latest_by_number.get(number)
+            if current is None or parsed_timestamp >= current[0]:
+                latest_by_number[number] = record
+        except OSError as error:
+            print(f"[-] Skipping unreadable entry '{filepath}': {error}", file=sys.stderr)
+            continue
 
     return sorted(latest_by_number.values(), key=lambda record: (record[0], record[2]), reverse=True)
 
@@ -56,8 +69,17 @@ def write_report(directory, demands):
         f"{timestamp} - {number} - {title}"
         for _, timestamp, number, title in demands
     ]
-    report_path.write_text("\n".join(report_lines) + ("\n" if report_lines else ""), encoding="utf-8")
-    return report_path
+    content = "\n".join(report_lines) + ("\n" if report_lines else "")
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            report_path.write_text(content, encoding="utf-8")
+            return report_path
+        except OSError as error:
+            last_error = error
+            if attempt < 3:
+                time.sleep(0.4 * attempt)
+    raise last_error
 
 
 def main():
@@ -68,7 +90,10 @@ def main():
         demands = collect_latest_demands(directory)
         report_path = write_report(directory, demands)
     except OSError as error:
-        print(f"[-] Failed to generate the demand list: {error}")
+        print(f"[-] Failed to generate the demand list: {error}", file=sys.stderr)
+        return 1
+    except Exception as error:
+        print(f"[-] Unexpected error generating the demand list: {error}", file=sys.stderr)
         return 1
 
     print(f"[+] Wrote {len(demands)} unique demands to '{report_path.name}'.")
@@ -76,5 +101,12 @@ def main():
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as error:
+        print(f"[-] Fatal error: {error}", file=sys.stderr)
+        sys.exit(1)

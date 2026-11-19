@@ -21,8 +21,19 @@ import os
 import re
 import ssl
 import sys
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Tentativa de import da biblioteca cryptography
 try:
@@ -30,8 +41,8 @@ try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, rsa
 except ImportError:
-    print("\n[!] A biblioteca 'cryptography' é necessária para a leitura detalhada dos certificados.")
-    print("    Instale-a com o comando: pip install cryptography\n")
+    print("\n[!] A biblioteca 'cryptography' é necessária para a leitura detalhada dos certificados.", file=sys.stderr)
+    print("    Instale-a com o comando: pip install cryptography\n", file=sys.stderr)
     sys.exit(1)
 
 # Ativa suporte a caracteres UTF-8 e cores ANSI no Windows
@@ -40,11 +51,6 @@ if sys.platform == "win32":
         os.system("")  # Ativa VT100 / ANSI escape sequences no terminal do Windows
     except Exception:
         pass
-    if hasattr(sys.stdout, "reconfigure"):
-        try:
-            sys.stdout.reconfigure(encoding="utf-8")
-        except Exception:
-            pass
 
 # Cores ANSI para terminal
 class Cor:
@@ -144,10 +150,14 @@ def extract_cert_info(cert: x509.Certificate, index: int) -> dict:
     issuer_orgs = [attr.value for attr in cert.issuer.get_attributes_for_oid(x509.oid.NameOID.ORGANIZATION_NAME)]
     issuer_org_value = issuer_orgs[0] if issuer_orgs else ""
 
-    # Datas de Validade (UTC)
+    # Datas de Validade (UTC) - compatível com versões novas e antigas de cryptography
     now_utc = datetime.now(timezone.utc)
-    valid_from_utc = cert.not_valid_before_utc
-    valid_to_utc = cert.not_valid_after_utc
+    if hasattr(cert, "not_valid_before_utc"):
+        valid_from_utc = cert.not_valid_before_utc
+        valid_to_utc = cert.not_valid_after_utc
+    else:
+        valid_from_utc = cert.not_valid_before.replace(tzinfo=timezone.utc)
+        valid_to_utc = cert.not_valid_after.replace(tzinfo=timezone.utc)
 
     # Conversão para fuso horário local
     valid_from_local = valid_from_utc.astimezone()
@@ -336,21 +346,24 @@ def extract_cert_info(cert: x509.Certificate, index: int) -> dict:
     }
 
 
-def load_certificates(store_name: str = "MY") -> list[dict]:
+def load_certificates(store_name: str = "MY") -> tuple[list[dict], bool]:
     """Carrega os certificados digitais do repositório especificado via ssl.enum_certificates."""
     try:
         raw_certs = ssl.enum_certificates(store_name)
     except Exception as e:
-        print(f"{Cor.VERMELHO}[-] Erro ao acessar o repositório de certificados '{store_name}': {e}{Cor.RESET}")
-        return []
+        print(f"[-] Erro ao acessar o repositório de certificados '{store_name}': {e}", file=sys.stderr)
+        return [], False
 
     cert_list = []
+    had_decode_errors = False
     for idx, (cert_bytes, encoding_type, trust) in enumerate(raw_certs, 1):
         try:
             cert = x509.load_der_x509_certificate(cert_bytes)
             info = extract_cert_info(cert, idx)
             cert_list.append(info)
         except Exception as e:
+            had_decode_errors = True
+            print(f"[-] Erro ao decodificar certificado #{idx}: {e}", file=sys.stderr)
             cert_list.append({
                 "index": idx,
                 "cn": f"Erro ao decodificar certificado #{idx}: {e}",
@@ -360,7 +373,7 @@ def load_certificates(store_name: str = "MY") -> list[dict]:
                 "tipo": "Desconhecido",
             })
 
-    return cert_list
+    return cert_list, not had_decode_errors
 
 
 def print_banner(store_name: str, total_count: int, valid_count: int, expiring_count: int, expired_count: int, use_color: bool = True):
@@ -521,7 +534,11 @@ def interactive_menu(certs: list[dict], store_name: str, use_color: bool = True)
         print(f"  {c_cian}[L]{c_reset}      - Listar novamente todos os certificados")
         print(f"  {c_cian}[S]{c_reset}      - Sair do programa")
 
-        escolha = input(f"\n{c_bold}Escolha uma opção (ou Enter para sair): {c_reset}").strip()
+        try:
+            escolha = input(f"\n{c_bold}Escolha uma opção (ou Enter para sair): {c_reset}").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nEncerrando visualizador de certificados.")
+            break
 
         if not escolha or escolha.lower() in ["s", "sair", "exit", "q"]:
             print("\nEncerrando visualizador de certificados.")
@@ -537,12 +554,18 @@ def interactive_menu(certs: list[dict], store_name: str, use_color: bool = True)
                 print(f"\n[!] Certificado com índice {idx} não encontrado. Intervalo válido: 1 a {len(certs)}.\n")
         elif escolha.lower() == "t":
             out_file = Path.cwd() / "!-RELATORIO_CERTIFICADOS.txt"
-            export_to_text(certs, out_file)
-            print(f"\n{c_verd}[+] Relatório exportado com sucesso para:{c_reset} {out_file}\n")
+            try:
+                export_to_text(certs, out_file)
+                print(f"\n{c_verd}[+] Relatório exportado com sucesso para:{c_reset} {out_file}\n")
+            except OSError as e:
+                print(f"[-] Erro ao exportar relatório TXT '{out_file}': {e}", file=sys.stderr)
         elif escolha.lower() == "j":
             out_file = Path.cwd() / "!-RELATORIO_CERTIFICADOS.json"
-            export_to_json(certs, out_file)
-            print(f"\n{c_verd}[+] Relatório JSON exportado com sucesso para:{c_reset} {out_file}\n")
+            try:
+                export_to_json(certs, out_file)
+                print(f"\n{c_verd}[+] Relatório JSON exportado com sucesso para:{c_reset} {out_file}\n")
+            except OSError as e:
+                print(f"[-] Erro ao exportar relatório JSON '{out_file}': {e}", file=sys.stderr)
         elif escolha.lower() == "l":
             for c in certs:
                 print_certificate_card(c, use_color=use_color, detailed=False)
@@ -614,10 +637,12 @@ def main():
     use_color = not args.no_color
 
     # Carrega certificados
-    certs = load_certificates(args.store)
+    certs, load_ok = load_certificates(args.store)
     if not certs:
-        print(f"\nNenhum certificado encontrado no repositório '{args.store}'.\n")
-        return 0
+        if load_ok:
+            print(f"\nNenhum certificado encontrado no repositório '{args.store}'.\n")
+            return 0
+        return 1
 
     # Aplica filtros se especificados
     filtered_certs = certs
@@ -667,23 +692,36 @@ def main():
     for c in filtered_certs:
         print_certificate_card(c, use_color=use_color, detailed=args.detailed)
 
+    had_errors = not load_ok
+
     # Exportação via argumento de linha de comando
     if args.export:
         out_path = Path(args.export)
-        if out_path.suffix.lower() == ".json":
-            export_to_json(filtered_certs, out_path)
-        else:
-            export_to_text(filtered_certs, out_path)
-        print(f"[+] Relatório exportado com sucesso para: {out_path.resolve()}\n")
+        try:
+            if out_path.suffix.lower() == ".json":
+                export_to_json(filtered_certs, out_path)
+            else:
+                export_to_text(filtered_certs, out_path)
+            print(f"[+] Relatório exportado com sucesso para: {out_path.resolve()}\n")
+        except OSError as e:
+            had_errors = True
+            print(f"[-] Erro ao exportar relatório para '{out_path}': {e}", file=sys.stderr)
 
     # Se executado diretamente (ex: duplo-clique no Windows sem flags extras)
     is_direct_run = len(sys.argv) == 1
     if is_direct_run and not args.no_interactive:
         interactive_menu(certs, args.store, use_color=use_color)
 
-    return 0
+    return 1 if had_errors else 0
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\nEncerrando visualizador de certificados.")
+        sys.exit(0)
+    except Exception as e:
+        print(f"[-] Erro fatal: {e}", file=sys.stderr)
+        sys.exit(1)

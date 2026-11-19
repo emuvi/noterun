@@ -4,7 +4,20 @@
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
 
 # ==============================================================================
 # GLOBAL CONFIGURATION
@@ -71,13 +84,16 @@ def main():
 
     try:
         for file_path in current_dir.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in media_extensions:
-                files_to_convert.append(file_path)
+            try:
+                if file_path.is_file() and file_path.suffix.lower() in media_extensions:
+                    files_to_convert.append(file_path)
+            except OSError:
+                continue
     except OSError as e:
-        print(f"[-] File System Error while scanning directory: {e}")
+        print_error(f"[-] File System Error while scanning directory: {e}")
         return 1
     except Exception as e:
-        print(
+        print_error(
             f"[-] An unexpected error occurred while scanning directory: {e}")
         return 1
 
@@ -103,13 +119,6 @@ def main():
 
         print(f"[*] Converting: '{file_path.name}' -> '{output_file.name}'...")
 
-        # FFmpeg parameters for extreme voice compression:
-        # -vn : disable video processing (extract audio stream only)
-        # -c:a aac : use native AAC encoder (since it's widely supported for m4a)
-        # -ac 1 : downmix to mono
-        # -ar 16000 : lower sample rate to 16kHz (plenty for voice clarity)
-        # -b:a 16k : highly compressed 16 kbps bitrate
-        # -y : overwrite output file if it exists
         cmd = [
             'ffmpeg',
             '-i', str(file_path),
@@ -121,32 +130,56 @@ def main():
             '-y',
             str(output_file)
         ]
+        fallback_cmd = [
+            'ffmpeg',
+            '-err_detect', 'ignore_err',
+            '-fflags', '+genpts',
+            '-i', str(file_path),
+            '-vn',
+            '-c:a', 'aac',
+            '-ac', '1',
+            '-ar', '16000',
+            '-b:a', '16k',
+            '-y',
+            str(output_file)
+        ]
 
         try:
-            # Capture output to avoid flooding the console, but keep it for errors
-            result = subprocess.run(
-                cmd, check=True, capture_output=True, text=True)
+            subprocess.run(
+                cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
             print(f"[+] Successfully converted '{output_file.name}'.")
             success_count += 1
             processed_files.append(file_path)
+        except FileNotFoundError:
+            print_error("[-] CRITICAL ERROR: ffmpeg was not found.")
+            print_error(
+                "[-] Please make sure ffmpeg is installed and added to your system's PATH.")
+            return 1
         except subprocess.CalledProcessError as e:
-            print(
-                f"[-] Error converting '{file_path.name}': Subprocess failed with exit code {e.returncode}")
-            if e.stderr:
-                print(f"    FFmpeg stderr: {e.stderr.strip()}")
+            print(f"[*] Initial conversion failed for '{file_path.name}'. Retrying with error-tolerant flags...")
+            try:
+                subprocess.run(
+                    fallback_cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
+                print(f"[+] Successfully converted '{output_file.name}' (fallback mode).")
+                success_count += 1
+                processed_files.append(file_path)
+                continue
+            except subprocess.CalledProcessError as e2:
+                err_to_show = e2.stderr.strip() if e2.stderr else (e.stderr.strip() if e.stderr else str(e2))
+                print_error(
+                    f"[-] Error converting '{file_path.name}': Subprocess failed with exit code {e2.returncode}")
+                if err_to_show:
+                    print_error(f"    FFmpeg stderr: {err_to_show}")
+            except Exception as e2:
+                print_error(f"[-] Fallback conversion error for '{file_path.name}': {e2}")
             if output_file.exists():
                 try:
                     output_file.unlink()
                 except OSError:
                     pass
             failure_count += 1
-        except FileNotFoundError:
-            print("[-] CRITICAL ERROR: ffmpeg was not found.")
-            print(
-                "[-] Please make sure ffmpeg is installed and added to your system's PATH.")
-            return 1
         except Exception as e:
-            print(
+            print_error(
                 f"[-] An unexpected error occurred while converting '{file_path.name}': {e}")
             if output_file.exists():
                 try:
@@ -160,7 +193,7 @@ def main():
     print(f"[+] Successful conversions: {success_count}")
 
     if failure_count > 0:
-        print(f"[-] Failed conversions: {failure_count}")
+        print_error(f"[-] Failed conversions: {failure_count}")
     else:
         print("[+] All media files converted successfully!")
 
@@ -170,20 +203,40 @@ def main():
         elif DELETE_ORIGIN_FILES is False:
             ans = 'n'
         else:
-            ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            try:
+                ans = input("\nDo you want to delete the origin files? (Y/N): ")
+            except (EOFError, KeyboardInterrupt):
+                ans = 'n'
             
         if ans.strip().lower() == 'y':
             for fp in processed_files:
-                try:
-                    if fp.exists():
-                        fp.unlink()
-                        print(f"[+] Arquivo de origem excluído: {fp.name}")
-                except Exception as e:
-                    print(f"[-] Erro ao excluir {fp.name}: {e}")
+                deleted = False
+                last_err = None
+                for attempt in range(1, 4):
+                    try:
+                        if fp.exists():
+                            fp.unlink()
+                            print(f"[+] Arquivo de origem excluído: {fp.name}")
+                        deleted = True
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if attempt < 3:
+                            time.sleep(0.4 * attempt)
+                if not deleted:
+                    failure_count += 1
+                    print_error(f"[-] Erro ao excluir {fp.name}: {last_err}")
 
     return 1 if failure_count > 0 else 0
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

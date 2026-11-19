@@ -2,18 +2,44 @@ import difflib
 import glob
 import importlib
 import json
+import logging
 import os
 import re
 import shutil
+import sys
 import time
 import traceback
+import warnings
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-import pypdf
-import spacy
-from langdetect import detect
-from lmstd import ChatResponse, ListModelsResponse, LMStd
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+try:
+    import pypdf
+    from lmstd import ChatResponse, ListModelsResponse, LMStd
+except ImportError as e:
+    print(f"🔴 [ERROR] Required library missing: {e}. Install with: pip install pypdf lmstd", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    import spacy
+except ImportError:
+    spacy = None
+
+try:
+    from langdetect import detect
+except ImportError:
+    detect = None
 
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
@@ -61,7 +87,7 @@ def get_current_time() -> str:
     try:
         return datetime.now().strftime('%H:%M:%S')
     except Exception as e:
-        print(f"🔴 [Error] get_current_time failed: {e}")
+        print(f"🔴 [Error] get_current_time failed: {e}", file=sys.stderr)
         return "00:00:00"
 
 
@@ -72,7 +98,7 @@ def log_message(message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}", file=sys.stderr)
 
 
 def log_step(step_name: str, status: str = "STARTING") -> None:
@@ -82,7 +108,7 @@ def log_step(step_name: str, status: str = "STARTING") -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] log_step failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] log_step failed: {e}", file=sys.stderr)
 
 
 def log_step_success(step_name: str, message: str = "") -> None:
@@ -93,17 +119,17 @@ def log_step_success(step_name: str, message: str = "") -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] log_step_success failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] log_step_success failed: {e}", file=sys.stderr)
 
 
 def log_step_error(step_name: str, error_msg: str) -> None:
     """Logs an error occurring in a specific step."""
     try:
         msg = f"[{get_current_time()}] 🔴 [ERROR] [{step_name}] {error_msg}"
-        print(msg)
+        print(msg, file=sys.stderr)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] log_step_error failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] log_step_error failed: {e}", file=sys.stderr)
 
 
 def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
@@ -142,35 +168,35 @@ def load_spacy_model(lang_code: str) -> Any:
         "ru": "ru_core_news_sm",
         "xx": "xx_ent_wiki_sm"
     }
-    model_name = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
+    if spacy is None:
+        log_message("Spacy is not installed; using lightweight rule-based fallback.")
+        return None
 
-    try:
-        log_step(f"Loading Spacy model for language '{lang_code}'")
+    primary = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
+    candidates = [primary] + [m for m in ("xx_ent_wiki_sm", "pt_core_news_sm", "en_core_web_sm") if m != primary]
 
+    for model_name in candidates:
         if model_name in nlp_models_cache:
             log_step_success(
                 f"Loading Spacy model for language '{lang_code}'", f"Found in cache: {model_name}")
             return nlp_models_cache[model_name]
 
         try:
-            model_module = importlib.import_module(model_name)
-            model = model_module.load()
+            log_step(f"Loading Spacy model for language '{lang_code}'", f"Trying {model_name}")
+            try:
+                model_module = importlib.import_module(model_name)
+                model = model_module.load()
+            except (ImportError, AttributeError):
+                model = spacy.load(model_name)
             nlp_models_cache[model_name] = model
             log_step_success(
-                f"Loading Spacy model for language '{lang_code}'", f"Loaded dynamically: {model_name}")
+                f"Loading Spacy model for language '{lang_code}'", f"Loaded model: {model_name}")
             return model
-        except (ImportError, AttributeError):
-            model = spacy.load(model_name)
-            nlp_models_cache[model_name] = model
-            log_step_success(
-                f"Loading Spacy model for language '{lang_code}'", f"Loaded via spacy.load: {model_name}")
-            return model
-    except Exception as e:
-        log_step_error(
-            f"Loading Spacy model for language '{lang_code}'", str(e))
-        log_message(
-            f"Erro: Modelo '{model_name}' do spacy não pode ser carregado ({e}). Por favor, execute '!-LIB-Install.py' primeiro.")
-        raise RuntimeError(f"Spacy model '{model_name}' not loaded: {e}")
+        except Exception:
+            continue
+
+    log_message(f"No Spacy model available for '{lang_code}'; using lightweight rule-based fallback.")
+    return None
 
 
 # Initialize the LM Studio client pointing to the local LM Studio server.
@@ -211,23 +237,31 @@ def extract_pdf_text(file_path: str) -> str:
         log_step("Extracting PDF text")
         with open(file_path, 'rb') as pdf_file:
             reader = pypdf.PdfReader(pdf_file)
+            if getattr(reader, "is_encrypted", False):
+                try:
+                    reader.decrypt("")
+                except Exception:
+                    pass
             total_pages = len(reader.pages)
 
             if total_pages > 33:
-                mid_start = (total_pages // 2) - 5
+                mid_start = max(0, (total_pages // 2) - 5)
                 pages_to_extract = sorted(set(
-                    list(range(11)) +
-                    list(range(mid_start, mid_start + 11)) +
-                    list(range(total_pages - 11, total_pages))
+                    list(range(min(11, total_pages))) +
+                    list(range(mid_start, min(mid_start + 11, total_pages))) +
+                    list(range(max(0, total_pages - 11), total_pages))
                 ))
             else:
                 pages_to_extract = list(range(total_pages))
 
             for page_num in pages_to_extract:
-                page = reader.pages[page_num]
-                extracted = page.extract_text()
-                if extracted:
-                    text += extracted + "\n"
+                try:
+                    page = reader.pages[page_num]
+                    extracted = page.extract_text()
+                    if extracted:
+                        text += extracted + "\n"
+                except Exception as page_err:
+                    log_message(f"Warning: Failed to extract text from page {page_num + 1}: {page_err}")
         log_step_success("Extracting PDF text", f"Extracted {len(text)} chars")
     except Exception as e:
         log_step_error("Extracting PDF text", str(e))
@@ -274,20 +308,38 @@ Example Response:
         if client is None:
             raise ConnectionError("LM Studio client is not initialized.")
 
-        response: ChatResponse = client.chat(
-            system_prompt="You are a helpful assistant specialized in extracting specific information from documents into JSON format. You only respond with raw, valid JSON.",
-            input_data=clean_text_for_llm(full_prompt),
-            temperature=0.0,
-        )
-        if "output" in response:
-            for item in response.get("output", []):
-                if item.get("type") == "message":
-                    content = item.get("content")
+        safe_input = clean_text_for_llm(full_prompt)
+        last_api_error: Optional[Exception] = None
+        for attempt in range(1, 4):
+            content = None
+            try:
+                log_step("Querying AI model for fields", f"Attempt {attempt}/3")
+                response: ChatResponse = client.chat(
+                    system_prompt="You are a helpful assistant specialized in extracting specific information from documents into JSON format. You only respond with raw, valid JSON.",
+                    input_data=safe_input,
+                    temperature=0.0,
+                )
+                if "output" in response:
+                    for item in response.get("output", []):
+                        if item.get("type") == "message":
+                            content = item.get("content")
+                            break
+                if content:
                     break
+                if attempt < 3:
+                    log_message(f"Empty response from LM Studio (attempt {attempt}/3). Retrying...")
+                    time.sleep(attempt)
+            except Exception as api_err:
+                last_api_error = api_err
+                if attempt < 3:
+                    log_message(f"Transient LM Studio error (attempt {attempt}/3): {api_err}. Retrying...")
+                    time.sleep(attempt * 2)
+                else:
+                    raise api_err
 
         if not content:
             log_step_error("Querying AI model for fields",
-                           "Empty response content")
+                           f"Empty response content{f' ({last_api_error})' if last_api_error else ''}")
             return {f: "EMPTY" for f in fields}
 
         content = clean_text_for_llm(content).strip()
@@ -299,7 +351,18 @@ Example Response:
             content = content[:-3]
         content = content.strip()
 
-        extracted_data = json.loads(content)
+        try:
+            extracted_data = json.loads(content)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", content, re.DOTALL)
+            if match:
+                candidate = re.sub(r",\s*\}", "}", match.group(0))
+                extracted_data = json.loads(candidate)
+            else:
+                raise
+
+        if not isinstance(extracted_data, dict):
+            raise json.JSONDecodeError("Expected JSON object", content, 0)
 
         result = {}
         for field in fields:
@@ -327,8 +390,7 @@ Example Response:
         return {f: "EMPTY" for f in fields}
     except Exception as e:
         log_step_error("Querying AI model for fields", f"API Error: {e}")
-        log_message(f"Error calling Local LM Studio API: {e}")
-        raise ConnectionError("API Error 500")
+        raise ConnectionError(f"API Error: {e}")
 
 
 def format_author(text: str, nlp_model: Any) -> str:
@@ -356,12 +418,22 @@ def format_author(text: str, nlp_model: Any) -> str:
         if text_to_analyze.isupper():
             text_to_analyze = text_to_analyze.lower()
 
-        doc = nlp_model(text_to_analyze)
+        if nlp_model is None:
+            stopwords = {
+                "de", "da", "do", "dos", "das", "e", "van", "von", "del",
+                "la", "le", "di", "du", "and", "of", "the", "et"
+            }
+            for token_text in parts[:-1]:
+                clean_text = re.sub(r'[^a-zA-ZÀ-ÿ]', '', token_text)
+                if clean_text and clean_text.lower() not in stopwords:
+                    initials.append(clean_text[0].upper() + ".")
+        else:
+            doc = nlp_model(text_to_analyze)
 
-        for token in doc:
-            clean_text = re.sub(r'[^a-zA-ZÀ-ÿ]', '', token.text)
-            if clean_text and token.pos_ not in ["ADP", "CCONJ", "SCONJ", "DET", "PRON", "PART"]:
-                initials.append(clean_text[0].upper() + ".")
+            for token in doc:
+                clean_text = re.sub(r'[^a-zA-ZÀ-ÿ]', '', token.text)
+                if clean_text and token.pos_ not in ["ADP", "CCONJ", "SCONJ", "DET", "PRON", "PART"]:
+                    initials.append(clean_text[0].upper() + ".")
 
         if initials:
             res = f"{last_name}, {' '.join(initials)}"
@@ -389,27 +461,50 @@ def format_title_case_nlp(text: str, nlp_model: Any) -> str:
         if text.isupper():
             text = text.lower()
 
-        doc = nlp_model(text)
+        if nlp_model is None:
+            minor_words = {
+                "a", "o", "os", "as", "e", "ou", "de", "da", "do", "das", "dos",
+                "em", "na", "no", "nas", "nos", "por", "para", "com", "sem", "um", "uma",
+                "the", "of", "and", "in", "on", "at", "to", "for", "by", "with", "from", "an", "or"
+            }
+            tokens = re.findall(r'\S+|\s+', text)
+            orig_tokens = re.findall(r'\S+|\s+', original_text)
+            out_parts = []
+            for idx, tok in enumerate(tokens):
+                if tok.isspace():
+                    out_parts.append(tok)
+                    continue
+                orig_tok = orig_tokens[idx] if idx < len(orig_tokens) else tok
+                clean_alpha = re.sub(r'[^a-zA-ZÀ-ÿ]', '', tok)
+                if clean_alpha and len(clean_alpha) <= 4 and orig_tok.isupper():
+                    out_parts.append(orig_tok)
+                elif clean_alpha.lower() in minor_words:
+                    out_parts.append(tok.lower())
+                else:
+                    out_parts.append(tok.capitalize())
+            res = "".join(out_parts).strip()
+        else:
+            doc = nlp_model(text)
 
-        result = ""
-        for token in doc:
-            word = token.text
-            original_word = original_text[token.idx:token.idx + len(word)]
-            has_alpha = any(c.isalpha() for c in word)
+            result = ""
+            for token in doc:
+                word = token.text
+                original_word = original_text[token.idx:token.idx + len(word)]
+                has_alpha = any(c.isalpha() for c in word)
 
-            if has_alpha:
-                if token.pos_ == "PROPN" and len(word) <= 4 and original_word.isupper():
-                    word_fmt = original_word
-                elif token.pos_ in ["NOUN", "PROPN", "VERB", "AUX", "ADJ", "ADV"]:
-                    word_fmt = word.capitalize()
+                if has_alpha:
+                    if token.pos_ == "PROPN" and len(word) <= 4 and original_word.isupper():
+                        word_fmt = original_word
+                    elif token.pos_ in ["NOUN", "PROPN", "VERB", "AUX", "ADJ", "ADV"]:
+                        word_fmt = word.capitalize()
+                    else:
+                        word_fmt = word.lower()
                 else:
                     word_fmt = word.lower()
-            else:
-                word_fmt = word.lower()
 
-            result += word_fmt + token.whitespace_
+                result += word_fmt + token.whitespace_
 
-        res = result.strip()
+            res = result.strip()
         if res:
             res = capitalize_first_letter(res)
         log_step_success("Formatting title case")
@@ -427,27 +522,43 @@ def abbreviate_words(text: str, nlp_model: Any, target_pos: List[str], preserve_
             log_step_success("Abbreviating words", "Empty text")
             return ""
 
-        doc = nlp_model(text)
-        out = ""
-        first_alpha_seen = False
+        if nlp_model is None:
+            words = text.split()
+            out_words = []
+            first_alpha_seen = False
+            for word in words:
+                has_alpha = any(c.isalpha() for c in word)
+                is_candidate = has_alpha and len(word) > 2
+                if has_alpha and preserve_first and not first_alpha_seen:
+                    is_candidate = False
+                    first_alpha_seen = True
+                if is_candidate:
+                    out_words.append(word[0].upper() + ".")
+                else:
+                    out_words.append(word)
+            res = " ".join(out_words).strip()
+        else:
+            doc = nlp_model(text)
+            out = ""
+            first_alpha_seen = False
 
-        for token in doc:
-            word = token.text
-            has_alpha = any(c.isalpha() for c in word)
+            for token in doc:
+                word = token.text
+                has_alpha = any(c.isalpha() for c in word)
 
-            is_candidate = token.pos_ in target_pos and has_alpha and len(
-                word) > 2
+                is_candidate = token.pos_ in target_pos and has_alpha and len(
+                    word) > 2
 
-            if has_alpha and preserve_first and not first_alpha_seen:
-                is_candidate = False
-                first_alpha_seen = True
+                if has_alpha and preserve_first and not first_alpha_seen:
+                    is_candidate = False
+                    first_alpha_seen = True
 
-            if is_candidate:
-                out += word[0].upper() + "." + token.whitespace_
-            else:
-                out += word + token.whitespace_
+                if is_candidate:
+                    out += word[0].upper() + "." + token.whitespace_
+                else:
+                    out += word + token.whitespace_
 
-        res = out.strip()
+            res = out.strip()
         if res:
             res = capitalize_first_letter(res)
         log_step_success("Abbreviating words")
@@ -685,23 +796,33 @@ def handle_unreadable_file(file: str, current_dir: str, error_log: str) -> None:
     """Moves an unreadable file to '!-ERRORS' to prevent looping."""
     try:
         log_step(f"Handling unreadable file: {file}")
+        def _unique_dest(dest_dir: str, fname: str) -> str:
+            candidate = os.path.join(dest_dir, fname)
+            b, e = os.path.splitext(fname)
+            c = 2
+            while os.path.exists(candidate):
+                candidate = os.path.join(dest_dir, f"{b} ({c}){e}")
+                c += 1
+            return candidate
+
         base_name, ext = os.path.splitext(file)
         errors_dir = os.path.join(current_dir, "!-ERRORS")
         os.makedirs(errors_dir, exist_ok=True)
 
-        shutil.move(os.path.join(current_dir, file),
-                    os.path.join(errors_dir, file))
-        log_message(f"[{file}] -> Moved to '!-ERRORS' to prevent looping.")
+        src_main = os.path.join(current_dir, file)
+        if os.path.exists(src_main):
+            shutil.move(src_main, _unique_dest(errors_dir, file))
+            log_message(f"[{file}] -> Moved to '!-ERRORS' to prevent looping.")
 
-        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        log_file_path = _unique_dest(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
 
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
-                    shutil.move(os.path.join(current_dir, related_file), os.path.join(
-                        errors_dir, related_file))
+                    shutil.move(os.path.join(current_dir, related_file),
+                                _unique_dest(errors_dir, related_file))
                 except Exception:
                     pass
         log_step_success(f"Handling unreadable file: {file}")
@@ -713,24 +834,34 @@ def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
     """Moves a file that caused an error to '!-ERRORS' to prevent looping."""
     try:
         log_step(f"Handling error file: {file}")
+        def _unique_dest(dest_dir: str, fname: str) -> str:
+            candidate = os.path.join(dest_dir, fname)
+            b, e = os.path.splitext(fname)
+            c = 2
+            while os.path.exists(candidate):
+                candidate = os.path.join(dest_dir, f"{b} ({c}){e}")
+                c += 1
+            return candidate
+
         base_name, ext = os.path.splitext(file)
         errors_dir = os.path.join(current_dir, "!-ERRORS")
         os.makedirs(errors_dir, exist_ok=True)
 
-        shutil.move(os.path.join(current_dir, file),
-                    os.path.join(errors_dir, file))
-        log_message(
-            f"[{file}] -> Moved to '!-ERRORS' to prevent looping on this file.")
+        src_main = os.path.join(current_dir, file)
+        if os.path.exists(src_main):
+            shutil.move(src_main, _unique_dest(errors_dir, file))
+            log_message(
+                f"[{file}] -> Moved to '!-ERRORS' to prevent looping on this file.")
 
-        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        log_file_path = _unique_dest(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
 
         for related_file in os.listdir(current_dir):
             if related_file != file and os.path.splitext(related_file)[0] == base_name:
                 try:
-                    shutil.move(os.path.join(current_dir, related_file), os.path.join(
-                        errors_dir, related_file))
+                    shutil.move(os.path.join(current_dir, related_file),
+                                _unique_dest(errors_dir, related_file))
                 except Exception:
                     pass
         log_step_success(f"Handling error file: {file}")
@@ -742,23 +873,39 @@ def rename_file(old_path: str, new_path: str) -> bool:
     """Renames a file from old_path to new_path."""
     log_step(
         f"Attempting to rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
-    try:
-        os.rename(old_path, new_path)
-        log_step_success(
-            "Renaming file", f"Successfully renamed file to '{os.path.basename(new_path)}'")
-        return True
-    except FileNotFoundError:
-        log_step_error("Renaming file",
-                       f"Original file '{old_path}' not found for renaming.")
-        return False
-    except PermissionError:
-        log_step_error("Renaming file",
-                       f"Permission denied when renaming '{old_path}'.")
-        return False
-    except Exception as e:
-        log_step_error(
-            "Renaming file", f"Error renaming file '{old_path}' to '{new_path}': {e}")
-        return False
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            os.rename(old_path, new_path)
+            log_step_success(
+                "Renaming file", f"Successfully renamed file to '{os.path.basename(new_path)}'")
+            return True
+        except FileNotFoundError:
+            log_step_error("Renaming file",
+                           f"Original file '{old_path}' not found for renaming.")
+            return False
+        except PermissionError as e:
+            last_error = f"Permission denied when renaming '{old_path}': {e}"
+            if attempt < 3:
+                time.sleep(0.4 * attempt)
+                continue
+        except OSError as e:
+            try:
+                shutil.move(old_path, new_path)
+                log_step_success(
+                    "Renaming file", f"Successfully moved file to '{os.path.basename(new_path)}'")
+                return True
+            except Exception as move_err:
+                last_error = f"Error renaming/moving file '{old_path}' to '{new_path}': {move_err}"
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
+        except Exception as e:
+            last_error = f"Error renaming file '{old_path}' to '{new_path}': {e}"
+            break
+
+    log_step_error("Renaming file", last_error or f"Failed to rename '{old_path}'.")
+    return False
 
 
 def rename_associated_files(current_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
@@ -790,11 +937,12 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
                     new_f_path = os.path.join(current_dir, new_f_name)
 
                     log_step(f"Checking if target path '{new_f_path}' exists")
-                    if os.path.exists(new_f_path):
-                        log_step_error(
-                            "Renaming associated file", f"Cannot rename '{f}' to '{new_f_name}' because target already exists.")
-                        fail_count += 1
-                        continue
+                    if os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                        counter = 2
+                        while os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                            new_f_name = f"{final_new_base_name} ({counter}){f_ext}"
+                            new_f_path = os.path.join(current_dir, new_f_name)
+                            counter += 1
 
                     log_step(
                         f"Attempting to rename associated file '{f}' to '{new_f_name}'")
@@ -834,19 +982,19 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
 
         if not text:
             error_msg = f"[{file}] -> Failed: Could not extract text from the PDF."
-            log_message(error_msg)
+            log_step_error("Extracting PDF text", error_msg)
             handle_unreadable_file(file, current_dir, error_msg)
             return False
 
         try:
             log_step("Detecting language")
-            lang_code = detect(text)
+            lang_code = detect(text) if detect is not None else "xx"
             log_step_success("Detecting language",
                              f"Language detected: {lang_code}")
         except Exception as e:
             lang_code = "xx"
-            log_step_error(
-                "Detecting language", f"Could not detect language ({e}), defaulting to (xx)")
+            log_message(
+                f"Could not detect language ({e}), defaulting to (xx)")
 
         current_nlp = load_spacy_model(lang_code)
 
@@ -867,8 +1015,8 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             print(f"  - {field}: {cleaned_result}")
 
         if extracted_data.get("Author", "EMPTY") == "EMPTY" and extracted_data.get("Series", "EMPTY") == "EMPTY" and extracted_data.get("Title", "EMPTY") == "EMPTY":
-            log_message(
-                f"[{file}] -> Skipped: No Author, Series, or Title found.")
+            log_step_error(
+                "Metadata extraction", f"[{file}] -> Skipped: No Author, Series, or Title found.")
             return False
 
         fmt_author = capitalize_first_letter(format_author(extracted_data["Author"], current_nlp))
@@ -928,16 +1076,16 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
             return False
 
     except ConnectionError as ce:
-        log_message(f"[{file}] -> API Error: {ce}. Skipping to next file.")
+        log_step_error("API Error", f"[{file}] -> API Error: {ce}. Skipping to next file.")
         return False
     except Exception as e:
         error_msg = f"[{file}] -> Unexpected error during file processing: {e}\n{traceback.format_exc()}"
-        log_message(error_msg)
+        log_step_error("Processing file", error_msg)
         handle_error_file(file, current_dir, error_msg)
         return False
 
 
-def process_all_pdfs() -> None:
+def process_all_pdfs() -> int:
     """Iterates over all PDF files in the current working directory and processes them once."""
     fields = ["Author", "Series", "Volume", "Title", "Subtitle", "Edition"]
     prompts = FIELD_PROMPTS
@@ -952,7 +1100,7 @@ def process_all_pdfs() -> None:
         if not files_to_process:
             log_message(
                 "No valid PDF files found in the current directory. Nothing to do.")
-            return
+            return 0
 
         try:
             log_step("Checking LM Studio connection")
@@ -962,9 +1110,9 @@ def process_all_pdfs() -> None:
             log_step_success("Checking LM Studio connection")
         except Exception as e:
             log_step_error("Checking LM Studio connection", str(e))
-            log_message(
-                "Error: Could not connect to LM Studio server. Exiting.")
-            return
+            log_step_error(
+                "LM Studio connection", "Could not connect to LM Studio server. Exiting.")
+            return 1
 
         processed_files = 0
         failed_files = 0
@@ -1005,22 +1153,24 @@ def process_all_pdfs() -> None:
 
         print_summary_box("Overall Session Summary",
                           total_files_in_cycle, processed_files, failed_files)
+        return 1 if failed_files > 0 else 0
 
     except Exception as e:
-        log_message(f"Critical error in batch execution loop: {e}")
-        traceback.print_exc()
-        # Since total_files_in_cycle might not be defined if error occurs early, we handle it if needed
-        # But we'll just log it as in original
+        log_step_error("Batch execution", f"Critical error in batch execution loop: {e}")
+        traceback.print_exc(file=sys.stderr)
+        return 1
 
 
-def main() -> None:
+def main() -> int:
     try:
-        process_all_pdfs()
+        return process_all_pdfs()
     except KeyboardInterrupt:
         log_message("Process interrupted by user. Exiting.")
+        return 0
     except Exception as e:
-        log_message(f"Fatal error: {e}")
+        log_step_error("Main", f"Fatal error: {e}")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

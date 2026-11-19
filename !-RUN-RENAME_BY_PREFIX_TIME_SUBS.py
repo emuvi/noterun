@@ -5,21 +5,43 @@ import os
 import datetime
 import sys
 import re
+import time
 from typing import Optional, Tuple
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
 
 def get_file_time(filepath: str) -> Optional[datetime.datetime]:
     """
-    Retrieves the file's modification time.
+    Retrieves the file's modification time, falling back safely if timestamps are invalid.
     """
     try:
         stat_info = os.stat(filepath)
-        return datetime.datetime.fromtimestamp(stat_info.st_mtime)
     except OSError as e:
-        print(f"[-] OS Error getting file time for '{os.path.basename(filepath)}': {e}")
+        print_error(f"[-] OS Error getting file time for '{os.path.basename(filepath)}': {e}")
         return None
     except Exception as e:
-        print(f"[-] Unexpected error getting file time for '{os.path.basename(filepath)}': {e}")
+        print_error(f"[-] Unexpected error getting file time for '{os.path.basename(filepath)}': {e}")
         return None
+
+    for ts_attr in ("st_mtime", "st_ctime"):
+        ts = getattr(stat_info, ts_attr, None)
+        if ts is not None:
+            try:
+                return datetime.datetime.fromtimestamp(ts)
+            except (OSError, OverflowError, ValueError):
+                continue
+    return datetime.datetime.now()
 
 def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, Optional[str]]:
     """
@@ -158,45 +180,60 @@ def rename_file(filepath: str, directory: str, filename: str, user_prefix: str) 
             print(f"    Reason: {skip_reason}\n")
             return True
 
-        new_filepath = get_safe_target_path(directory, new_name)
-        final_name = os.path.basename(new_filepath)
-        
-        print(f"[*] Renaming file...")
-        print(f"    From: '{filepath}'")
-        print(f"    To:   '{new_filepath}'")
-        
-        os.rename(filepath, new_filepath)
-        print(f"[+] Successfully renamed '{filename}' to '{final_name}'.\n")
-        return True
-        
-    except PermissionError as e:
-        print(f"[-] Permission Denied renaming '{filepath}': {e}\n")
-    except OSError as e:
-        print(f"[-] OS Error renaming '{filepath}': {e}\n")
-    except Exception as e:
-        print(f"[-] Unexpected error renaming '{filepath}': {e}\n")
-        
-    return False
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                new_filepath = get_safe_target_path(directory, new_name)
+                final_name = os.path.basename(new_filepath)
+                if attempt == 1:
+                    print(f"[*] Renaming file...")
+                    print(f"    From: '{filepath}'")
+                    print(f"    To:   '{new_filepath}'")
+                os.rename(filepath, new_filepath)
+                print(f"[+] Successfully renamed '{filename}' to '{final_name}'.\n")
+                return True
+            except PermissionError as e:
+                last_error = f"Permission Denied renaming '{filepath}': {e}"
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
+            except OSError as e:
+                last_error = f"OS Error renaming '{filepath}': {e}"
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
 
-def filter_eligible_files(directory: str) -> list:
+        print_error(f"[-] {last_error}\n")
+        return False
+    except Exception as e:
+        print_error(f"[-] Unexpected error renaming '{filepath}': {e}\n")
+        return False
+
+def filter_eligible_files(directory: str) -> tuple:
     """
     Scans the directory and subfolders for files that are eligible for renaming.
     """
     print(f"[*] Scanning directory '{directory}' and subfolders for files to rename...")
     eligible_files = []
-    
-    for dirpath, dirnames, filenames in os.walk(directory):
+    scan_errors = [0]
+
+    def _on_walk_error(err: OSError) -> None:
+        scan_errors[0] += 1
+        print_error(f"[-] Error accessing folder during scan: {err}")
+
+    self_name = os.path.basename(__file__)
+    self_bat = os.path.splitext(self_name)[0] + ".bat"
+
+    for dirpath, dirnames, filenames in os.walk(directory, onerror=_on_walk_error):
         for filename in filenames:
-            filepath = os.path.join(dirpath, filename)
-            
             # Ignore system/script files, files starting with _, or .py/.url/.lnk files
-            if filename.startswith('!-') or filename.startswith('_') or filename == os.path.basename(__file__) or filename.lower().endswith(('.py', '.url', '.lnk')):
+            if filename.startswith('!-') or filename.startswith('_') or filename in (self_name, self_bat) or filename.lower().endswith(('.py', '.url', '.lnk')):
                 continue
                 
             eligible_files.append((dirpath, filename))
         
     print(f"[+] Found {len(eligible_files)} eligible file(s) for renaming evaluation.\n")
-    return eligible_files
+    return eligible_files, scan_errors[0]
 
 def main():
     """
@@ -207,22 +244,28 @@ def main():
     print("   Noterun Prefix-Time Rename Script (Recursive) Initialized")
     print("=" * 50)
     
-    user_prefix = input("Enter the string to use as prefix: ").strip()
-    if not user_prefix:
-        print("[-] No prefix entered. Exiting.")
+    try:
+        user_prefix = input("Enter the string to use as prefix: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\n[*] Operation canceled by user.")
         return 0
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    files_to_process = filter_eligible_files(script_dir)
+    user_prefix = re.sub(r'[\\/*?:"<>|]', '', user_prefix).strip()
+    if not user_prefix:
+        print("[*] No valid prefix entered. Exiting.")
+        return 0
+
+    script_dir = os.getcwd()
+    files_to_process, scan_errors = filter_eligible_files(script_dir)
     
     if not files_to_process:
         print("[*] No files to process. Exiting.")
-        return 0
+        return 1 if scan_errors > 0 else 0
         
     print("-" * 50)
     
     success_count = 0
-    failure_count = 0
+    failure_count = scan_errors
     
     for dirpath, filename in files_to_process:
         filepath = os.path.join(dirpath, filename)
@@ -236,12 +279,19 @@ def main():
     print(f"[+] Processed successfully: {success_count}")
     
     if failure_count > 0:
-        print(f"[-] Errors encountered: {failure_count}")
+        print_error(f"[-] Errors encountered: {failure_count}")
         return 1
     else:
         print("[+] All files processed without errors!")
         return 0
 
 if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n[*] Process interrupted by user.")
+        sys.exit(0)
+    except Exception as e:
+        print_error(f"[-] Fatal error: {e}")
+        sys.exit(1)

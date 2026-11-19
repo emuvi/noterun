@@ -6,6 +6,13 @@ from datetime import datetime, timedelta
 from types import ModuleType
 from typing import Iterable, Tuple
 
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 # List of scripts to be executed (relative to the current directory).
 SCRIPTS = []
 
@@ -45,7 +52,8 @@ def log_message(emoji: str, category: str, function_name: str, message: str) -> 
     Returns:
         None: This function only prints output.
     """
-    print(f"[{get_current_time()}] {emoji} [{category}] [{function_name}] {message}")
+    stream = sys.stderr if category == "ERROR" else sys.stdout
+    print(f"[{get_current_time()}] {emoji} [{category}] [{function_name}] {message}", file=stream)
 
 
 def log_info(function_name: str, message: str) -> None:
@@ -263,8 +271,11 @@ def run_script(script_path: str, item_index: int, total_items: int) -> bool:
 
     finally:
         log_step("restore_working_directory", f"Starting | params: {_format_params(original_cwd=original_cwd)}")
-        os.chdir(original_cwd)
-        log_success("restore_working_directory", f"Completed | active_directory={original_cwd}")
+        try:
+            os.chdir(original_cwd)
+            log_success("restore_working_directory", f"Completed | active_directory={original_cwd}")
+        except OSError as chdir_err:
+            log_error("restore_working_directory", f"Failed to restore working directory '{original_cwd}': {chdir_err}")
 
 
 def run_all_scripts(scripts: Iterable[str]) -> Tuple[int, int, int]:
@@ -345,20 +356,36 @@ def main() -> None:
     log_step(function_name, f"Starting | params: {_format_params(scripts_count=len(SCRIPTS), interval_hours=1)}")
     log_info(function_name, "Scheduler started. Scripts will run every hour.")
 
-    total, successes, failures = run_all_scripts(SCRIPTS)
-    log_info(
-        function_name,
-        f"Initial cycle completed | total_processed={total}, successes={successes}, failures={failures}",
-    )
-
-    while True:
-        wait_for_next_cycle(hours=1)
+    try:
         total, successes, failures = run_all_scripts(SCRIPTS)
         log_info(
             function_name,
-            f"Cycle completed | total_processed={total}, successes={successes}, failures={failures}",
+            f"Initial cycle completed | total_processed={total}, successes={successes}, failures={failures}",
         )
+
+        while True:
+            try:
+                wait_for_next_cycle(hours=1)
+                total, successes, failures = run_all_scripts(SCRIPTS)
+                log_info(
+                    function_name,
+                    f"Cycle completed | total_processed={total}, successes={successes}, failures={failures}",
+                )
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:
+                log_error(function_name, f"Unexpected error during scheduler cycle: {exc}. Retrying in 60s...")
+                time.sleep(60)
+    except KeyboardInterrupt:
+        log_info(function_name, "Scheduler stopped by user.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nScheduler stopped by user.")
+        sys.exit(0)
+    except Exception as exc:
+        log_error("main", f"Fatal scheduler error: {exc}")
+        sys.exit(1)

@@ -1,15 +1,33 @@
 import glob
+import logging
 import os
 import re
 import shutil
+import sys
 import time
 import traceback
 import unicodedata
+import warnings
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-import pypdf
-from lmstd import ChatResponse, LMStd
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+try:
+    import pypdf
+    from lmstd import ChatResponse, LMStd
+except ImportError as e:
+    print(f"🔴 [ERROR] Required library missing: {e}. Install with: pip install pypdf lmstd", file=sys.stderr)
+    sys.exit(1)
 
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
@@ -48,7 +66,7 @@ def get_current_time() -> str:
     try:
         return datetime.now().strftime('%H:%M:%S')
     except Exception as e:
-        print(f"🔴 [Error] get_current_time failed: {e}")
+        print(f"🔴 [Error] get_current_time failed: {e}", file=sys.stderr)
         return "00:00:00"
 
 
@@ -59,7 +77,7 @@ def log_message(message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] log_message failed: {e}", file=sys.stderr)
 
 
 def print_step(action: str, message: str) -> None:
@@ -69,7 +87,7 @@ def print_step(action: str, message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] print_step failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] print_step failed: {e}", file=sys.stderr)
 
 
 def print_success(action: str, message: str) -> None:
@@ -79,17 +97,17 @@ def print_success(action: str, message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] print_success failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [Error] print_success failed: {e}", file=sys.stderr)
 
 
 def print_error(action: str, message: str) -> None:
     """Prints an error message with a visual indicator."""
     try:
         msg = f"[{get_current_time()}] 🔴 [ERROR] [{action}] {message}"
-        print(msg)
+        print(msg, file=sys.stderr)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [Error] print_error failed: {e} - message: {message}")
+        print(f"[{get_current_time()}] 🔴 [Error] print_error failed: {e} - message: {message}", file=sys.stderr)
 
 
 def print_summary_box(title: str, total: int, success: int, fails: int) -> None:
@@ -212,17 +230,22 @@ def extract_pdf_text(file_path: str) -> str:
     try:
         with open(file_path, 'rb') as pdf_file:
             reader = pypdf.PdfReader(pdf_file)
+            if getattr(reader, "is_encrypted", False):
+                try:
+                    reader.decrypt("")
+                except Exception:
+                    pass
             total_pages = len(reader.pages)
 
             print_step(
                 func_name, f"Found {total_pages} pages. Calculating extraction ranges...")
 
             if total_pages > 33:
-                mid_start = (total_pages // 2) - 5
+                mid_start = max(0, (total_pages // 2) - 5)
                 pages_to_extract = sorted(set(
-                    list(range(11)) +
-                    list(range(mid_start, mid_start + 11)) +
-                    list(range(total_pages - 11, total_pages))
+                    list(range(min(11, total_pages))) +
+                    list(range(mid_start, min(mid_start + 11, total_pages))) +
+                    list(range(max(0, total_pages - 11), total_pages))
                 ))
             else:
                 pages_to_extract = list(range(total_pages))
@@ -265,31 +288,44 @@ def query_model_classification(client: LMStd, pdf_text: str, prompt: str) -> str
     safe_pdf_text = clean_text_for_llm(pdf_text)
     full_prompt = f"{safe_prompt}\n\n### TEXTO DO DOCUMENTO ###\n{safe_pdf_text}\n\n### SUA RESPOSTA (APENAS A CATEGORIA EXATA) ###\n"
 
-    try:
-        print_step(func_name, "Sending request to the model...")
-        response: ChatResponse = client.chat(
-            system_prompt=clean_text_for_llm(system_prompt),
-            input_data=clean_text_for_llm(full_prompt),
-            temperature=0.0,
-        )
-        content: Optional[str] = None
-        if "output" in response:
-            for item in response.get("output", []):
-                if item.get("type") == "message":
-                    content = item.get("content")
-                    break
+    safe_sys = clean_text_for_llm(system_prompt)
+    safe_input = clean_text_for_llm(full_prompt)
+    last_error: Optional[Exception] = None
+    for attempt in range(1, 4):
+        try:
+            print_step(func_name, f"Sending request to the model (attempt {attempt}/3)...")
+            response: ChatResponse = client.chat(
+                system_prompt=safe_sys,
+                input_data=safe_input,
+                temperature=0.0,
+            )
+            content: Optional[str] = None
+            if "output" in response:
+                for item in response.get("output", []):
+                    if item.get("type") == "message":
+                        content = item.get("content")
+                        break
 
-        if content:
-            cleaned_content = clean_text_for_llm(content).strip()
-            print_success(func_name, f"Model responded: {cleaned_content}")
-            return cleaned_content
+            if content:
+                cleaned_content = clean_text_for_llm(content).strip()
+                print_success(func_name, f"Model responded: {cleaned_content}")
+                return cleaned_content
 
-        print_error(func_name, "Model returned an empty response.")
-        return ""
-    except Exception as e:
-        print_error(
-            func_name, f"API Error communicating with Local LM Studio: {e}")
-        raise ConnectionError(f"API Error: {e}")
+            if attempt < 3:
+                log_message(f"{func_name}: Empty response on attempt {attempt}/3. Retrying...")
+                time.sleep(attempt)
+        except Exception as e:
+            last_error = e
+            if attempt < 3:
+                log_message(f"{func_name}: Transient API error on attempt {attempt}/3 ({e}). Retrying...")
+                time.sleep(attempt * 2)
+            else:
+                print_error(
+                    func_name, f"API Error communicating with Local LM Studio: {e}")
+                raise ConnectionError(f"API Error: {e}")
+
+    print_error(func_name, f"Model returned an empty response{f' ({last_error})' if last_error else ''}.")
+    return ""
 
 
 # --- Matching and File Management Functions ---
@@ -373,18 +409,29 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     func_name = "Move On Error"
     print_step(
         func_name, f"Moving '{file_path}' to '!-ERRORS' to prevent loop...")
+    def _unique_dest(dest_dir: str, fname: str) -> str:
+        candidate = os.path.join(dest_dir, fname)
+        b, e = os.path.splitext(fname)
+        c = 2
+        while os.path.exists(candidate):
+            candidate = os.path.join(dest_dir, f"{b} ({c}){e}")
+            c += 1
+        return candidate
+
     base_name, ext = os.path.splitext(file_path)
     errors_dir = os.path.join(current_dir, "!-ERRORS")
     os.makedirs(errors_dir, exist_ok=True)
-    error_path = os.path.join(errors_dir, file_path)
+    error_path = _unique_dest(errors_dir, file_path)
+    src_main = os.path.join(current_dir, file_path)
 
     try:
-        shutil.move(os.path.join(current_dir, file_path), error_path)
-        print_success(
-            func_name, f"Moved main file to '!-ERRORS'")
+        if os.path.exists(src_main):
+            shutil.move(src_main, error_path)
+            print_success(
+                func_name, "Moved main file to '!-ERRORS'")
 
         # Save the error log
-        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        log_file_path = _unique_dest(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
         print_success(func_name, f"Saved error log to '{log_file_path}'")
@@ -394,7 +441,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
             if related_file != file_path and os.path.splitext(related_file)[0] == base_name:
                 try:
                     shutil.move(os.path.join(current_dir, related_file),
-                                os.path.join(errors_dir, related_file))
+                                _unique_dest(errors_dir, related_file))
                     print_success(
                         func_name, f"Moved related file '{related_file}' to '!-ERRORS'")
                 except Exception as e:
@@ -439,18 +486,30 @@ def move_associated_files(current_dir: str, target_dir: str, orig_base_name: str
                     new_f_path = os.path.join(target_dir, new_f_name)
 
                     print_step(func_name, f"Checking if target path '{new_f_path}' exists.")
-                    if os.path.exists(new_f_path):
-                        print_error(func_name, f"Cannot move '{f}' to '{new_f_name}' because target already exists.")
-                        fail_count += 1
-                        continue
+                    if os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                        counter = 2
+                        while os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                            new_f_name = f"{final_base_name} ({counter}){f_ext}"
+                            new_f_path = os.path.join(target_dir, new_f_name)
+                            counter += 1
 
                     print_step(func_name, f"Attempting to move associated file '{f}' to '{new_f_name}'.")
-                    try:
-                        shutil.move(f_path, new_f_path)
+                    moved = False
+                    last_move_err = None
+                    for attempt in range(1, 4):
+                        try:
+                            shutil.move(f_path, new_f_path)
+                            moved = True
+                            break
+                        except Exception as move_err:
+                            last_move_err = move_err
+                            if attempt < 3:
+                                time.sleep(0.4 * attempt)
+                    if moved:
                         print_success(func_name, f"Moved associated file '{f}' to '{new_f_name}'")
                         success_count += 1
-                    except Exception as move_err:
-                        print_error(func_name, f"Failed to move associated file '{f}': {move_err}")
+                    else:
+                        print_error(func_name, f"Failed to move associated file '{f}': {last_move_err}")
                         fail_count += 1
 
             except Exception as file_err:
@@ -484,25 +543,31 @@ def move_file_and_related(file_path: str, target_dir: str, current_dir: str) -> 
                 break
             counter += 1
 
-    try:
-        shutil.move(os.path.join(current_dir, file_path), target_path)
-        print_success(func_name, f"Moved main PDF to: {target_path}")
+    src_main = os.path.join(current_dir, file_path)
+    last_err = None
+    for attempt in range(1, 4):
+        try:
+            shutil.move(src_main, target_path)
+            print_success(func_name, f"Moved main PDF to: {target_path}")
 
-        orig_base_name = os.path.splitext(file_path)[0]
-        final_base_name = os.path.splitext(os.path.basename(target_path))[0]
+            orig_base_name = os.path.splitext(file_path)[0]
+            final_base_name = os.path.splitext(os.path.basename(target_path))[0]
 
-        # Move related files
-        move_associated_files(current_dir, target_dir, orig_base_name, final_base_name, file_path)
+            # Move related files
+            move_associated_files(current_dir, target_dir, orig_base_name, final_base_name, file_path)
 
-        return True
-    except Exception as e:
-        print_error(func_name, f"Error moving main file {file_path}: {e}")
-        return False
+            return True
+        except Exception as e:
+            last_err = e
+            if attempt < 3:
+                time.sleep(0.4 * attempt)
+    print_error(func_name, f"Error moving main file {file_path}: {last_err}")
+    return False
 
 
 # --- Main Execution Loop ---
 
-def main() -> None:
+def main() -> int:
     current_dir = os.getcwd()
     parent_dir = os.path.dirname(current_dir)
 
@@ -510,13 +575,13 @@ def main() -> None:
 
     client = init_lmstd_client()
     if not client:
-        log_message("Failed to initialize AI Client. Aborting.")
-        return
+        print_error("Main", "Failed to initialize AI Client. Aborting.")
+        return 1
 
     prompt_text = get_classify_prompt(parent_dir, current_dir)
     if not prompt_text:
-        log_message("Could not generate instruction prompt. Aborting.")
-        return
+        print_error("Main", "Could not generate instruction prompt. Aborting.")
+        return 1
 
     rand_note = " (excluding 'RAND*')" if CHECK_RAND_PREFIX else ""
     print(f"\nThis script will continuously monitor the current folder for new PDF files{rand_note} to classify and move.")
@@ -535,6 +600,10 @@ def main() -> None:
             try:
                 # Refresh prompt text occasionally in case folders changed
                 prompt_text = get_classify_prompt(parent_dir, current_dir)
+                if not prompt_text:
+                    print_error("Main Loop", "Could not refresh category prompt. Retrying in 10s...")
+                    time.sleep(10)
+                    continue
 
                 pdf_files = sorted(glob.glob("*.pdf"))
                 files_to_process = []
@@ -655,13 +724,21 @@ def main() -> None:
                 time.sleep(2)
 
             except Exception as e:
-                log_message(f"Unexpected error in the main loop: {e}")
-                traceback.print_exc()
+                print_error("Main Loop", f"Unexpected error in the main loop: {e}")
+                traceback.print_exc(file=sys.stderr)
                 time.sleep(5)
 
     except KeyboardInterrupt:
-        print(f"\n[{get_current_time()}] Continuous monitoring stopped by user.")
+        print(f"\n[{get_current_time()}] ℹ️ [LOG] Continuous monitoring stopped by user.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print(f"\n[{get_current_time()}] ℹ️ [LOG] Process interrupted by user. Exiting.")
+        sys.exit(0)
+    except Exception as e:
+        print_error("Fatal", f"Fatal error: {e}")
+        sys.exit(1)

@@ -1,16 +1,42 @@
 import importlib
+import logging
 import os
 import re
 import shutil
 import sys
+import time
 import traceback
+import warnings
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import pypdf
-import spacy
-from langdetect import detect
-from lmstd import ChatResponse, LMStd
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+try:
+    import pypdf
+    from lmstd import ChatResponse, LMStd
+except ImportError as e:
+    print(f"🔴 [ERROR] Required library missing: {e}. Install with: pip install pypdf lmstd", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    import spacy
+except ImportError:
+    spacy = None
+
+try:
+    from langdetect import detect
+except ImportError:
+    detect = None
 
 # Global event chain to track execution trace for each file
 event_chain: List[str] = []
@@ -45,7 +71,7 @@ def get_current_time() -> str:
     try:
         return datetime.now().strftime('%H:%M:%S')
     except Exception as e:
-        print(f"🔴 [ERROR] [get_current_time] get_current_time failed: {e}")
+        print(f"🔴 [ERROR] [get_current_time] get_current_time failed: {e}", file=sys.stderr)
         return "00:00:00"
 
 def log_info(func_name: str, message: str) -> None:
@@ -61,7 +87,7 @@ def log_info(func_name: str, message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [log_info] log_info failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [log_info] log_info failed: {e}", file=sys.stderr)
 
 def log_step(func_name: str, message: str) -> None:
     """
@@ -76,7 +102,7 @@ def log_step(func_name: str, message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [log_step] log_step failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [log_step] log_step failed: {e}", file=sys.stderr)
 
 def log_success(func_name: str, message: str) -> None:
     """
@@ -91,7 +117,7 @@ def log_success(func_name: str, message: str) -> None:
         print(msg)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [log_success] log_success failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [log_success] log_success failed: {e}", file=sys.stderr)
 
 def log_error(func_name: str, message: str) -> None:
     """
@@ -103,10 +129,10 @@ def log_error(func_name: str, message: str) -> None:
     """
     try:
         msg = f"[{get_current_time()}] 🔴 [ERROR] [{func_name}] {message}"
-        print(msg)
+        print(msg, file=sys.stderr)
         event_chain.append(msg)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [log_error] log_error failed: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [log_error] log_error failed: {e}", file=sys.stderr)
 
 
 def print_progress(current: int, total: int, prefix: str = '', suffix: str = '', decimals: int = 1, length: int = 50, fill: str = '█', printEnd: str = "\n") -> None:
@@ -200,17 +226,28 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
     func_name = "handle_file_error"
     log_step(func_name, f"Starting - Parameters: file_path={file_path}")
     log_step(func_name, f"Moving '{file_path}' to '!-ERRORS'...")
+    def _unique_dest(dest_dir: str, fname: str) -> str:
+        candidate = os.path.join(dest_dir, fname)
+        b, e = os.path.splitext(fname)
+        c = 2
+        while os.path.exists(candidate):
+            candidate = os.path.join(dest_dir, f"{b} ({c}){e}")
+            c += 1
+        return candidate
+
     base_name, ext = os.path.splitext(file_path)
     errors_dir = os.path.join(current_dir, "!-ERRORS")
     os.makedirs(errors_dir, exist_ok=True)
-    error_path = os.path.join(errors_dir, file_path)
+    error_path = _unique_dest(errors_dir, file_path)
+    src_main = os.path.join(current_dir, file_path)
 
     try:
-        shutil.move(os.path.join(current_dir, file_path), error_path)
-        log_success(func_name, f"Moved main file to '!-ERRORS'")
+        if os.path.exists(src_main):
+            shutil.move(src_main, error_path)
+            log_success(func_name, f"Moved main file to '!-ERRORS'")
         
         # Save the error log
-        log_file_path = os.path.join(errors_dir, f"{base_name}.log")
+        log_file_path = _unique_dest(errors_dir, f"{base_name}.log")
         with open(log_file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(event_chain) + "\n\n[FINAL ERROR]\n" + error_log)
         log_success(func_name, f"Saved error log to '{log_file_path}'")
@@ -220,7 +257,7 @@ def handle_file_error(file_path: str, current_dir: str, error_log: str) -> None:
             if related_file != file_path and os.path.splitext(related_file)[0] == base_name:
                 try:
                     shutil.move(os.path.join(current_dir, related_file),
-                                os.path.join(errors_dir, related_file))
+                                _unique_dest(errors_dir, related_file))
                     log_success(func_name, f"Moved related file '{related_file}' to '!-ERRORS'")
                 except Exception as e:
                     log_error(func_name, f"Failed to move related file {related_file}: {e}")
@@ -257,29 +294,32 @@ def load_spacy_model(lang_code: str) -> Any:
         "ru": "ru_core_news_sm",
         "xx": "xx_ent_wiki_sm"
     }
-    model_name = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
+    if spacy is None:
+        log_info(func_name, "Spacy is not installed; using lightweight rule-based fallback.")
+        return None
 
-    try:
-        log_step(func_name, f"Loading Spacy model '{model_name}' for language '{lang_code}'")
+    primary = spacy_models_map.get(lang_code, "xx_ent_wiki_sm")
+    candidates = [primary] + [m for m in ("xx_ent_wiki_sm", "pt_core_news_sm", "en_core_web_sm") if m != primary]
 
+    for model_name in candidates:
         if model_name in nlp_models_cache:
             log_success(func_name, f"Found in cache: {model_name}")
             return nlp_models_cache[model_name]
-
         try:
-            model_module = importlib.import_module(model_name)
-            model = model_module.load()
+            log_step(func_name, f"Loading Spacy model '{model_name}' for language '{lang_code}'")
+            try:
+                model_module = importlib.import_module(model_name)
+                model = model_module.load()
+            except (ImportError, AttributeError):
+                model = spacy.load(model_name)
             nlp_models_cache[model_name] = model
-            log_success(func_name, f"Loaded dynamically: {model_name}")
+            log_success(func_name, f"Loaded model: {model_name}")
             return model
-        except (ImportError, AttributeError):
-            model = spacy.load(model_name)
-            nlp_models_cache[model_name] = model
-            log_success(func_name, f"Loaded via spacy.load: {model_name}")
-            return model
-    except Exception as e:
-        log_error(func_name, f"Error: Spacy model '{model_name}' could not be loaded ({e}).")
-        raise RuntimeError(f"Spacy model '{model_name}' not loaded: {e}")
+        except Exception:
+            continue
+
+    log_info(func_name, f"No Spacy model available for '{lang_code}'; using lightweight rule-based fallback.")
+    return None
 
 
 def abbreviate_words(text: str, nlp_model: Any, target_pos: List[str], preserve_first: bool = True) -> str:
@@ -302,6 +342,17 @@ def abbreviate_words(text: str, nlp_model: Any, target_pos: List[str], preserve_
         if not text or text.upper() == "EMPTY":
             log_success(func_name, "Empty text, nothing to abbreviate.")
             return ""
+
+        if nlp_model is None:
+            words = text.split()
+            out_words = []
+            for idx, word in enumerate(words):
+                has_alpha = any(c.isalpha() for c in word)
+                if has_alpha and len(word) > 2 and not (preserve_first and idx == 0):
+                    out_words.append(word[0] + ".")
+                else:
+                    out_words.append(word)
+            return " ".join(out_words).strip()
 
         doc = nlp_model(text)
         out = ""
@@ -468,6 +519,11 @@ def extract_pdf_text(file_path: str) -> str:
 
             log_step(func_name, "Initializing pypdf PdfReader.")
             reader = pypdf.PdfReader(pdf_file)
+            if getattr(reader, "is_encrypted", False):
+                try:
+                    reader.decrypt("")
+                except Exception:
+                    pass
             total_pages = len(reader.pages)
             log_success(func_name, f"PDF reader initialized successfully. Total pages found: {total_pages}.")
 
@@ -533,35 +589,47 @@ def get_summary_from_llm(client: LMStd, prompt: str) -> Optional[str]:
     """
     func_name = "get_summary_from_llm"
     log_step(func_name, "Starting - Parameters: prompt sent to API")
-    content: Optional[str] = None
-    try:
-        clean_prompt = clean_text_for_llm(prompt)
-        log_step(func_name, "Sending chat request to LM Studio.")
-        response: ChatResponse = client.chat(
-            system_prompt="You are a helpful assistant that summarizes documents extremely concisely for filenames. Always respond in the same language as the input text and ensure perfect spelling.",
-            input_data=clean_prompt,
-            temperature=0.0
-        )
-        log_success(func_name, "Received response from LM Studio.")
+    clean_prompt = clean_text_for_llm(prompt)
+    last_error = None
+    for attempt in range(1, 4):
+        content: Optional[str] = None
+        try:
+            log_step(func_name, f"Sending chat request to LM Studio (attempt {attempt}/3).")
+            response: ChatResponse = client.chat(
+                system_prompt="You are a helpful assistant that summarizes documents extremely concisely for filenames. Always respond in the same language as the input text and ensure perfect spelling.",
+                input_data=clean_prompt,
+                temperature=0.0
+            )
+            log_success(func_name, "Received response from LM Studio.")
 
-        log_step(func_name, "Parsing response output.")
-        if "output" in response:
-            for item in response.get("output", []):
-                if item.get("type") == "message":
-                    content = item.get("content")
-                    log_success(func_name, "Successfully extracted message content from response.")
-                    break
+            log_step(func_name, "Parsing response output.")
+            if "output" in response:
+                for item in response.get("output", []):
+                    if item.get("type") == "message":
+                        content = item.get("content")
+                        log_success(func_name, "Successfully extracted message content from response.")
+                        break
 
-        if not content:
-            log_error(func_name, "Model returned an empty or invalid response.")
-            return None
+            if not content:
+                last_error = "Model returned an empty or invalid response."
+                if attempt < 3:
+                    time.sleep(attempt)
+                    continue
+                break
 
-        content = clean_text_for_llm(content)
-        log_success(func_name, f"Final LLM content: {content.strip()}")
-        return content.strip()
-    except Exception as e:
-        log_error(func_name, f"Error calling Local LM Studio API: {e}. Check API settings or server status.")
-        return None
+            content = clean_text_for_llm(content)
+            log_success(func_name, f"Final LLM content: {content.strip()}")
+            return content.strip()
+        except Exception as e:
+            last_error = f"Error calling Local LM Studio API: {e}. Check API settings or server status."
+            if attempt < 3:
+                log_info(func_name, f"Transient LM Studio error (attempt {attempt}/3). Retrying...")
+                time.sleep(attempt * 2)
+                continue
+            break
+
+    log_error(func_name, last_error or "Unknown LM Studio error.")
+    return None
 
 
 def sanitize_filename(summary: str) -> Optional[str]:
@@ -656,19 +724,36 @@ def rename_file(old_path: str, new_path: str) -> bool:
     """
     func_name = "rename_file"
     log_step(func_name, f"Attempting to rename '{old_path}' to '{new_path}'.")
-    try:
-        os.rename(old_path, new_path)
-        log_success(func_name, f"Successfully renamed file to '{os.path.basename(new_path)}'.")
-        return True
-    except FileNotFoundError:
-        log_error(func_name, f"Original file '{old_path}' not found for renaming.")
-        return False
-    except PermissionError:
-        log_error(func_name, f"Permission denied when renaming '{old_path}'.")
-        return False
-    except Exception as e:
-        log_error(func_name, f"Error renaming file '{old_path}' to '{new_path}': {e}")
-        return False
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            os.rename(old_path, new_path)
+            log_success(func_name, f"Successfully renamed file to '{os.path.basename(new_path)}'.")
+            return True
+        except FileNotFoundError:
+            log_error(func_name, f"Original file '{old_path}' not found for renaming.")
+            return False
+        except PermissionError as e:
+            last_error = f"Permission denied when renaming '{old_path}': {e}"
+            if attempt < 3:
+                time.sleep(0.4 * attempt)
+                continue
+        except OSError as e:
+            try:
+                shutil.move(old_path, new_path)
+                log_success(func_name, f"Successfully moved file to '{os.path.basename(new_path)}'.")
+                return True
+            except Exception as move_err:
+                last_error = f"Error renaming/moving file '{old_path}' to '{new_path}': {move_err}"
+                if attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
+        except Exception as e:
+            last_error = f"Error renaming file '{old_path}' to '{new_path}': {e}"
+            break
+
+    log_error(func_name, last_error or f"Failed to rename '{old_path}'.")
+    return False
 
 
 def rename_associated_files(current_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
@@ -709,10 +794,12 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
                     new_f_path = os.path.join(current_dir, new_f_name)
 
                     log_step(func_name, f"Checking if target path '{new_f_path}' exists.")
-                    if os.path.exists(new_f_path):
-                        log_error(func_name, f"Cannot rename '{f}' to '{new_f_name}' because target already exists.")
-                        fail_count += 1
-                        continue
+                    if os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                        counter = 2
+                        while os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                            new_f_name = f"{final_new_base_name} ({counter}){f_ext}"
+                            new_f_path = os.path.join(current_dir, new_f_name)
+                            counter += 1
 
                     log_step(func_name, f"Attempting to rename associated file '{f}' to '{new_f_name}'.")
                     if rename_file(f_path, new_f_path):
@@ -761,7 +848,7 @@ def rename_pdf_from_summary(client: LMStd, file_path: str, pdf_text: str) -> boo
         return False
 
     try:
-        lang_code = detect(summary)
+        lang_code = detect(summary) if detect is not None else "xx"
     except Exception:
         lang_code = "xx"
     current_nlp = load_spacy_model(lang_code)
@@ -797,7 +884,7 @@ def rename_pdf_from_summary(client: LMStd, file_path: str, pdf_text: str) -> boo
         return False
 
 
-def process_all_pdfs(client: LMStd) -> None:
+def process_all_pdfs(client: LMStd) -> int:
     """
     Iterates over all PDF files in the current working directory and processes them.
     Includes a progress cycle.
@@ -823,11 +910,11 @@ def process_all_pdfs(client: LMStd) -> None:
             total = len(pdf_files)
         except Exception as ls_err:
             log_error(func_name, f"Error listing directory contents: {ls_err}")
-            return
+            return 1
 
         if not pdf_files:
-            log_error(func_name, "No PDF files found in the current directory. Nothing to do.")
-            return
+            log_info(func_name, "No PDF files found in the current directory. Nothing to do.")
+            return 0
 
         log_success(func_name, f"Found {total} PDF file(s).")
         log_step("Cycle", f"Processing item 1 of {total}")
@@ -876,13 +963,15 @@ def process_all_pdfs(client: LMStd) -> None:
 
         log_success(func_name, "Batch processing cycle complete.")
         print_summary_box("Processing Summary", total, success_count, fail_count)
+        return 1 if fail_count > 0 else 0
 
     except Exception as e:
         log_error(func_name, f"Critical error during batch processing: {e}")
         print_summary_box("Processing Summary (Interrupted)", total, success_count, fail_count)
+        return 1
 
 
-def main() -> None:
+def main() -> int:
     """
     Main application entry point.
     """
@@ -892,19 +981,23 @@ def main() -> None:
     client = init_lmstd_client()
     if not client:
         log_error(func_name, "Fatal Error: Could not initialize LMStd Client. Exiting.")
-        sys.exit(1)
+        return 1
 
     try:
-        process_all_pdfs(client)
+        exit_code = process_all_pdfs(client)
     except Exception as e:
         log_error(func_name, f"Error in main execution block: {e}")
+        return 1
     log_success(func_name, "Batch PDF Renamer finished.")
+    return exit_code
 
 
 if __name__ == "__main__":
     try:
-        main()
+        sys.exit(main())
     except KeyboardInterrupt:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [main] Process interrupted by user. Exiting.")
+        print(f"[{get_current_time()}] ℹ️ [LOG] [main] Process interrupted by user. Exiting.")
+        sys.exit(0)
     except Exception as e:
-        print(f"[{get_current_time()}] 🔴 [ERROR] [main] Fatal error: {e}")
+        print(f"[{get_current_time()}] 🔴 [ERROR] [main] Fatal error: {e}", file=sys.stderr)
+        sys.exit(1)
