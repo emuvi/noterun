@@ -32,7 +32,6 @@ try:
 except ImportError:
     print("\n[!] A biblioteca 'cryptography' é necessária para a leitura detalhada dos certificados.")
     print("    Instale-a com o comando: pip install cryptography\n")
-    input("Pressione Enter para sair...")
     sys.exit(1)
 
 # Ativa suporte a caracteres UTF-8 e cores ANSI no Windows
@@ -618,8 +617,6 @@ def main():
     certs = load_certificates(args.store)
     if not certs:
         print(f"\nNenhum certificado encontrado no repositório '{args.store}'.\n")
-        if not args.no_interactive and len(sys.argv) == 1:
-            input("Pressione Enter para sair...")
         return 0
 
     # Aplica filtros se especificados
@@ -683,8 +680,6 @@ def main():
     is_direct_run = len(sys.argv) == 1
     if is_direct_run and not args.no_interactive:
         interactive_menu(certs, args.store, use_color=use_color)
-    elif not args.no_interactive and not args.json and not args.export:
-        input("Pressione Enter para sair...")
 
     return 0
 

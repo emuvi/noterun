@@ -15,7 +15,6 @@ try:
                    api_token=os.environ.get("LMSTD_APIKEY"))
 except Exception as e:
     print(f"🔴 [Error] Failed to initialize LMStd client: {e}")
-    input("\nPress Enter to exit...")
     sys.exit(1)
 
 INSTRUCTION_PROMPT = """You are a fiscal document organization assistant. Your task is to read the provided invoice (nota fiscal) and extract three specific pieces of data to compose the file name.
@@ -296,5 +295,4 @@ def main():
 
 if __name__ == '__main__':
     exit_code = main()
-    input("\nPress Enter to exit...")
     sys.exit(exit_code)

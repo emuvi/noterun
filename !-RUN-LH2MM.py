@@ -414,5 +414,4 @@ def main():
 
 if __name__ == '__main__':
     exit_code = main()
-    input("\nPress Enter to exit...")
     sys.exit(exit_code)

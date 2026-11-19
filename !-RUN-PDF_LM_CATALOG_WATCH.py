@@ -1077,7 +1077,6 @@ def main() -> None:
         log_message("Process interrupted by user. Exiting.")
     except Exception as e:
         log_message(f"Fatal error: {e}")
-        input("Press Enter to exit...")
 
 
 if __name__ == "__main__":
