@@ -21,6 +21,19 @@ def print_error(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def read_input(prompt: str = "") -> str:
+    """
+    Prints the prompt to stdout and reads a line from stdin without writing to stderr.
+    Avoids CPython's interactive input(prompt) writing prompts to stderr on Windows consoles.
+    """
+    if prompt:
+        print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    if line == "":
+        raise EOFError
+    return line.rstrip("\r\n")
+
+
 def find_destiny_file(script_dir: str) -> tuple:
     """
     Locates the destinations list file in the current directory or next to the script.
@@ -189,7 +202,7 @@ def choose_destination(destinations: list, current_dir: str) -> tuple:
 
     while True:
         try:
-            choice = input(
+            choice = read_input(
                 f"\nSelect destination [1-{len(destinations)}] (0 or Enter to cancel): "
             ).strip()
         except (EOFError, KeyboardInterrupt):
@@ -227,7 +240,7 @@ def choose_destination(destinations: list, current_dir: str) -> tuple:
         if not os.path.isdir(target_dir):
             print(f"[!] Destination directory does not exist: {target_dir}")
             try:
-                create_ans = input("    Do you want to create this directory? (Y/N): ").strip().lower()
+                create_ans = read_input("    Do you want to create this directory? (Y/N): ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 print("\n[*] Operation canceled by user.")
                 return None, False

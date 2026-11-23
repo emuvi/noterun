@@ -12,7 +12,7 @@ set "ERR_FILE=%TMP_DIR%\%~n0_%RANDOM%_%RANDOM%.err.log"
 if not exist "%SCRIPT_PY%" (
     echo.
     echo ============================================================
-    echo [!] ATENCAO: Script Python nao encontrado!
+    echo [!] ATENÇÃO: Script Python não encontrado!
     echo     Esperado: "%SCRIPT_PY%"
     echo ============================================================
     echo.
@@ -29,20 +29,24 @@ if errorlevel 1 (
 
 %PY_CMD% "%SCRIPT_PY%" %* 2>"%ERR_FILE%"
 set "EXIT_CODE=%ERRORLEVEL%"
+if not defined EXIT_CODE set "EXIT_CODE=0"
 
 set "ERR_SIZE=0"
 if exist "%ERR_FILE%" for %%A in ("%ERR_FILE%") do set "ERR_SIZE=%%~zA"
 if not defined ERR_SIZE set "ERR_SIZE=0"
 
-if %ERR_SIZE% GTR 0 (
+if %EXIT_CODE% NEQ 0 (
     echo.
     echo ============================================================
-    echo [!] ATENCAO: Ocorreram erros durante a execucao!
-    echo     Verifique as mensagens abaixo:
+    echo [!] ATENÇÃO: Ocorreram erros durante a execução!
+    echo     Código de saída: %EXIT_CODE%
+    if %ERR_SIZE% GTR 0 (
+        echo     Verifique as mensagens abaixo:
+        echo ============================================================
+        type "%ERR_FILE%"
+    )
     echo ============================================================
-    type "%ERR_FILE%"
-    echo ============================================================
-    del /f /q "%ERR_FILE%" >nul 2>&1
+    if exist "%ERR_FILE%" del /f /q "%ERR_FILE%" >nul 2>&1
     echo.
     pause
 ) else (
