@@ -1253,6 +1253,7 @@ def main() -> None:
         sys.exit(app.exec_())
     except Exception as e:
         print_error(f"Error in main application loop: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

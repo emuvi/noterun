@@ -836,12 +836,16 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
 
     text = extract_pdf_text(file)
     if not text:
-        handle_file_error(file, current_dir, "Failed to extract text or PDF is empty.")
+        error_msg = "Failed to extract text or PDF is empty."
+        log_error("process_single_file", f"[{file}] {error_msg}")
+        handle_file_error(file, current_dir, error_msg)
         return False
 
     prompt = build_summary_prompt(text)
     if not prompt:
-        handle_file_error(file, current_dir, "Failed to build summary prompt.")
+        error_msg = "Failed to build summary prompt."
+        log_error("process_single_file", f"[{file}] {error_msg}")
+        handle_file_error(file, current_dir, error_msg)
         return False
 
     start_time = time.time()
@@ -850,7 +854,9 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
     log_success("process_single_file", f"LLM call completed in {elapsed_time:.2f}s")
 
     if not llm_response:
-        handle_file_error(file, current_dir, "LLM returned an empty or unparseable response.")
+        error_msg = "LLM returned an empty or unparseable response."
+        log_error("process_single_file", f"[{file}] {error_msg}")
+        handle_file_error(file, current_dir, error_msg)
         return False
 
     try:
@@ -862,14 +868,18 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
 
     new_base_name = sanitize_filename(llm_response)
     if not new_base_name:
-        handle_file_error(file, current_dir, "Sanitized filename resulted in an empty string.")
+        error_msg = "Sanitized filename resulted in an empty string."
+        log_error("process_single_file", f"[{file}] {error_msg}")
+        handle_file_error(file, current_dir, error_msg)
         return False
 
     old_path = os.path.join(current_dir, file)
     target_dir = os.path.dirname(os.path.abspath(current_dir))
     new_path = get_unique_new_path(target_dir, new_base_name, old_path)
     if not new_path:
-        handle_file_error(file, current_dir, "Failed to generate unique new path.")
+        error_msg = "Failed to generate unique new path."
+        log_error("process_single_file", f"[{file}] {error_msg}")
+        handle_file_error(file, current_dir, error_msg)
         return False
 
     old_base_name = os.path.splitext(os.path.basename(file))[0]

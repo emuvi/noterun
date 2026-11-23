@@ -638,6 +638,7 @@ def process_all_pdfs() -> int:
                 text = extract_pdf_text(os.path.join(current_dir, file))
                 if not text:
                     error_msg = "Failed to extract text or PDF is empty."
+                    print_error(f"[{file}] {error_msg}")
                     handle_file_error(file, current_dir, error_msg)
                     fail_count += 1
                     file_fail = 1
@@ -651,6 +652,7 @@ def process_all_pdfs() -> int:
 
                     if not llm_response:
                         error_msg = "LLM returned empty or unparseable response."
+                        print_error(f"[{file}] {error_msg}")
                         handle_file_error(file, current_dir, error_msg)
                         fail_count += 1
                         file_fail = 1
@@ -672,6 +674,7 @@ def process_all_pdfs() -> int:
                                 print_error(f"Failed to fully process {file}")
                         else:
                             error_msg = "No suitable target directory found for file."
+                            print_error(f"[{file}] {error_msg}")
                             handle_file_error(file, current_dir, error_msg)
                             fail_count += 1
                             file_fail = 1

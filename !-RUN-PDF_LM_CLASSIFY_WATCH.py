@@ -647,6 +647,7 @@ def main() -> int:
                         text = extract_pdf_text(file)
                         if not text:
                             error_msg = "Failed to extract text or PDF is empty."
+                            print_error("Cycle Loop", f"[{file}] {error_msg}")
                             handle_file_error(
                                 file, current_dir, error_msg)
                             cycle_fails += 1
@@ -662,6 +663,7 @@ def main() -> int:
 
                             if not llm_response:
                                 error_msg = "LLM returned empty or unparseable response."
+                                print_error("Cycle Loop", f"[{file}] {error_msg}")
                                 handle_file_error(
                                     file, current_dir, error_msg)
                                 cycle_fails += 1
@@ -680,12 +682,14 @@ def main() -> int:
                                         file_success = 1
                                     else:
                                         error_msg = f"Failed to move file '{file}' to target directory '{target_dir}'."
+                                        print_error("Cycle Loop", error_msg)
                                         handle_file_error(file, current_dir, error_msg)
                                         cycle_fails += 1
                                         file_fail = 1
                                         time.sleep(2)
                                 else:
                                     error_msg = "No suitable target directory found for file."
+                                    print_error("Cycle Loop", f"[{file}] {error_msg}")
                                     handle_file_error(
                                         file, current_dir, error_msg)
                                     cycle_fails += 1

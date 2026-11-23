@@ -261,11 +261,10 @@ def extract_pdf_text(file_path: str) -> str:
                     if extracted:
                         text += extracted + "\n"
                 except Exception as page_err:
-                    log_message(f"Warning: Failed to extract text from page {page_num + 1}: {page_err}")
+                    log_step_error("Extracting PDF text", f"Failed to extract text from page {page_num + 1}: {page_err}")
         log_step_success("Extracting PDF text", f"Extracted {len(text)} chars")
     except Exception as e:
-        log_step_error("Extracting PDF text", str(e))
-        log_message(f"Error reading PDF {file_path}: {e}")
+        log_step_error("Extracting PDF text", f"Error reading PDF '{file_path}': {e}")
     return text.strip()
 
 
@@ -383,10 +382,10 @@ Example Response:
         return result
 
     except json.JSONDecodeError as e:
-        log_step_error("Querying AI model for fields",
-                       f"JSON Decode Error: {e}")
-        log_message(
-            f"Error decoding JSON from model response: {e}\nResponse was:\n{content}")
+        log_step_error(
+            "Querying AI model for fields",
+            f"Error decoding JSON from model response: {e}\nResponse was:\n{content}",
+        )
         return {f: "EMPTY" for f in fields}
     except Exception as e:
         log_step_error("Querying AI model for fields", f"API Error: {e}")
@@ -1131,8 +1130,8 @@ def process_all_pdfs() -> int:
                 else:
                     failed_files += 1
                     file_fail = 1
-                    log_message(
-                        f"[{file}] -> Failed! Cycle total: {failed_files}")
+                    log_step_error(
+                        "Cycle", f"[{file}] -> Failed! Cycle total: {failed_files}")
             except Exception as e:
                 log_step_error(f"Processing file {file}", str(e))
                 failed_files += 1

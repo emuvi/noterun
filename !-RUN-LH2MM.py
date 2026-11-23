@@ -372,7 +372,7 @@ def process_file(filename):
         return True
     except Exception as e:
         print_error(f"{get_current_time()} 🔴 [ERROR] process_file Failed to process {filename}: {str(e)}")
-        print(f"{get_current_time()} ℹ️ [LOG] process_file Please check file encoding, permissions or format for {filename}")
+        print_error(f"{get_current_time()} 🔴 [ERROR] process_file Please check file encoding, permissions or format for {filename}")
         return False
 
 def print_summary_box(total, successes, failures):

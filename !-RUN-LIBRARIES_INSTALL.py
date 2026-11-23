@@ -121,9 +121,14 @@ def install_packages() -> int:
     return 0
 
 
+def main() -> int:
+    """Entry point delegating to install_packages()."""
+    return install_packages()
+
+
 if __name__ == "__main__":
     try:
-        sys.exit(install_packages())
+        sys.exit(main())
     except KeyboardInterrupt:
         print("\n[*] Installation interrupted by user.")
         sys.exit(0)

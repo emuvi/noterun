@@ -585,7 +585,7 @@ def extract_info_from_pdf(pdf_path):
         return numero, titulo, text
     except Exception as e:
         log_error_line(f"{get_current_time()} 🔴 [ERROR] [extract_info_from_pdf] Erro ao processar o arquivo {pdf_path.name}: {e}")
-        print(f"{get_current_time()} ℹ️ [LOG] [extract_info_from_pdf] How to fix: Ensure the file is a valid, readable PDF document.")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [extract_info_from_pdf] How to fix: Ensure the file is a valid, readable PDF document.")
         return None, None, ""
 
 
@@ -1154,7 +1154,7 @@ def process_file(filepath):
         return "SUCCESS"
     except Exception as e:
         log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_file] Falha ao renomear '{filepath.name}': {e}")
-        print(f"{get_current_time()} ℹ️ [LOG] [process_file] How to fix: Check file permissions.")
+        log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_file] How to fix: Check file permissions.")
         return "ERROR"
 
 

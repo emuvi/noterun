@@ -336,6 +336,7 @@ def main() -> None:
         sys.exit(app.exec_())
     except Exception as e:
         log_error(func_name, f"Error in main application loop: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     try:
