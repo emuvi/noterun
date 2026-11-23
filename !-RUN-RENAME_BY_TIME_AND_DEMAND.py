@@ -59,10 +59,78 @@ def _safe_rename(src, dst) -> None:
     raise last_err
 
 
+COLON_FIELD_MARKERS = (
+    "Status",
+    "Resolução",
+    "Sistema de Origem",
+    "Identificador de Origem",
+    "Tipo",
+    "Tipo da Demanda",
+    "Solicitante",
+    "Lotação Solicitante",
+    "Equipe",
+    "Acesso Restrito",
+    "Prioridade",
+    "Responsável",
+    "Proprietário",
+    "Criado Por",
+    "Data de Criação",
+    "Data da Solicitação",
+    "Arquivado em",
+    "Planejado para",
+    "Severidade",
+    "ID",
+)
+
+SECTION_MARKERS = (
+    "Origem",
+    "Detalhes",
+    "Descrição",
+    "Sistema e Contrato",
+    "Previsibilidade de Atendimento",
+    "Cronograma de Compromissos",
+    "Discussão",
+    "Visão Geral",
+    "Faturamento",
+    "ESG",
+    "Links",
+    "Histórico",
+    "Informação de Faturamento",
+    "Tags",
+    "Tags Cliente",
+    "Meio Ambiente, Social e Governança",
+)
+
 FIELD_MARKERS = (
     "Status", "Resolução", "Origem", "Detalhes", "Descrição", "Sistema e Contrato",
     "Previsibilidade de Atendimento", "Cronograma de Compromissos", "Discussão",
     "Visão Geral", "Faturamento", "ESG", "Links", "Histórico", "Informação de Faturamento"
+)
+
+_COLON_MARKERS_VARIANTS = tuple(dict.fromkeys(
+    variant for m in COLON_FIELD_MARKERS for variant in (m, m.upper())
+))
+_SECTION_MARKERS_VARIANTS = tuple(dict.fromkeys(
+    variant for m in SECTION_MARKERS for variant in (m, m.upper())
+))
+
+_COLON_LINE_RE = re.compile(
+    r"^(?:" + "|".join(map(re.escape, _COLON_MARKERS_VARIANTS)) + r")\s*:"
+)
+_SECTION_LINE_RE = re.compile(
+    r"^(?:" + "|".join(map(re.escape, _SECTION_MARKERS_VARIANTS)) + r")(?:\s*\([^)]*\))?\s*$"
+)
+_TAB_BAR_LINE_RE = re.compile(
+    r"^(?:(?:" + "|".join(map(re.escape, _SECTION_MARKERS_VARIANTS)) + r")(?:\s+|$)){2,}$"
+)
+_PRINT_META_LINE_RE = re.compile(
+    r"^(?:https?://|alm\.serpro/|\d{2}/\d{2}/\d{4},?\s+\d{2}:\d{2}\b)",
+    re.IGNORECASE,
+)
+_STATUS_BOUNDARY_RE = re.compile(r"^(?:Status|STATUS)\s*:")
+_INLINE_STATUS_RE = re.compile(r"\s+(?:Status|STATUS)\s*:")
+_INLINE_COLON_MARKERS_RE = re.compile(
+    r"\s+(?:" + "|".join(map(re.escape, _COLON_MARKERS_VARIANTS)) + r")\s*:"
 )
 
 # Global cache for loaded Spacy models
@@ -77,6 +145,50 @@ def get_current_time():
         str: Current time formatted as [HH:MM:SS].
     """
     return f"[{datetime.now().strftime('%H:%M:%S')}]"
+
+
+def _collapse_split_demand_number(text):
+    """
+    Reúne dígitos de números de demanda de 7 dígitos separados por espaços na extração do PDF.
+    """
+    def replacer(match):
+        s = match.group(0)
+        num_part = match.group(2)
+        clean_num = re.sub(r"\s+", "", num_part)
+        if len(clean_num) == 7:
+            return match.group(1) + clean_num + match.group(3)
+        return s
+
+    return re.sub(
+        r"(^|\bDemanda\s+|\bItem\s+de\s+Trabalho\s+)(\d[\d\s]{5,13}\d)(\s*:|\b)",
+        replacer,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
+def normalize_pdf_lines(text):
+    """
+    Normaliza o texto do PDF preservando quebras de linha para identificar
+    com precisão limites de campos e cabeçalhos de seção.
+
+    Parameters:
+        text (str): The raw text extracted from the PDF.
+
+    Returns:
+        list[str]: Non-empty normalized lines.
+    """
+    text = unicodedata.normalize("NFKC", text)
+    text = text.replace("\u00ad", "").replace("\ufffd", " ")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    normalized_lines = []
+    for raw_line in text.split("\n"):
+        line = re.sub(r"[\x00-\x1f\x7f]", " ", raw_line)
+        line = re.sub(r"\s+", " ", line).strip()
+        if line:
+            line = _collapse_split_demand_number(line)
+            normalized_lines.append(line)
+    return normalized_lines
 
 
 def normalize_pdf_text(text):
@@ -94,16 +206,7 @@ def normalize_pdf_text(text):
     text = text.replace("\u00ad", "").replace("\ufffd", " ")
     text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
     result = re.sub(r"\s+", " ", text).strip()
-    
-    def replacer(match):
-        s = match.group(0)
-        num_part = match.group(2)
-        clean_num = re.sub(r"\s+", "", num_part)
-        if len(clean_num) == 7:
-            return match.group(1) + clean_num + match.group(3)
-        return s
-        
-    result = re.sub(r"(^|\bDemanda\s+|\bItem\s+de\s+Trabalho\s+)(\d[\d\s]{5,13}\d)(\s*:|\b)", replacer, result, flags=re.IGNORECASE)
+    result = _collapse_split_demand_number(result)
 
     print(f"{get_current_time()} ✅ [SUCCESS] [normalize_pdf_text] Completed normalisation. New length: {len(result)}")
     return result
@@ -127,6 +230,97 @@ def clean_title(title):
     return result
 
 
+def _is_field_boundary_line(line):
+    """
+    Retorna True se a linha representar o início de um campo ou seção do formulário
+    ALM/EWM (e não uma continuação do título da demanda).
+    """
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if _COLON_LINE_RE.match(stripped):
+        return True
+    if _SECTION_LINE_RE.match(stripped):
+        return True
+    if _TAB_BAR_LINE_RE.match(stripped):
+        return True
+    if _PRINT_META_LINE_RE.match(stripped):
+        return True
+    return False
+
+
+def _collect_title_from_line_match(lines, start_idx, first_part):
+    """
+    Coleta o título a partir de uma linha inicial até encontrar uma linha de fronteira
+    (campo ou seção do formulário ALM/EWM).
+    """
+    parts = [first_part.strip()] if first_part and first_part.strip() else []
+    boundary_line = None
+    max_extra_lines = 6
+    max_chars = 500
+
+    for next_idx in range(start_idx + 1, min(len(lines), start_idx + 1 + max_extra_lines)):
+        candidate_line = lines[next_idx]
+        if _is_field_boundary_line(candidate_line):
+            boundary_line = candidate_line
+            break
+        parts.append(candidate_line)
+        if sum(len(p) for p in parts) > max_chars:
+            break
+
+    if not parts:
+        return None
+
+    joined = " ".join(parts)
+    if boundary_line is None:
+        m_inline = _INLINE_COLON_MARKERS_RE.search(joined)
+        if m_inline:
+            joined = joined[:m_inline.start()]
+        elif len(parts) > 1:
+            joined = parts[0]
+    elif not _STATUS_BOUNDARY_RE.match(boundary_line):
+        m_status = _INLINE_STATUS_RE.search(joined)
+        if m_status:
+            joined = joined[:m_status.start()]
+
+    cleaned = clean_title(joined)
+    return cleaned or None
+
+
+def _find_title_from_lines(raw_text, number):
+    """
+    Busca o título preservando quebras de linha do PDF para evitar cortes em palavras
+    comuns dentro do título (como 'status', 'resolução', 'origem', 'detalhes').
+    """
+    print(f"{get_current_time()} 🔹 [STEP] [_find_title_from_lines] Starting for number: {number}")
+    lines = normalize_pdf_lines(raw_text)
+    if not lines:
+        return None
+
+    header_re = re.compile(
+        rf"(?:^|\s)(?i:(?:Demanda|Item\s+de\s+Trabalho)\s+)?{re.escape(number)}\s*:\s*(.*)$"
+    )
+    for idx, line in enumerate(lines):
+        match = header_re.search(line)
+        if match:
+            result = _collect_title_from_line_match(lines, idx, match.group(1))
+            if result:
+                print(f"{get_current_time()} ✅ [SUCCESS] [_find_title_from_lines] Completed (header). Found: '{result}'")
+                return result
+
+    ewm_re = re.compile(r"(?:^|\s)(?i:Título)\s*:\s*\*?\s*(.*)$")
+    for idx, line in enumerate(lines):
+        match = ewm_re.search(line)
+        if match:
+            result = _collect_title_from_line_match(lines, idx, match.group(1))
+            if result:
+                print(f"{get_current_time()} ✅ [SUCCESS] [_find_title_from_lines] Completed (EWM). Found: '{result}'")
+                return result
+
+    print(f"{get_current_time()} ℹ️ [LOG] [_find_title_from_lines] No match found.")
+    return None
+
+
 def _find_title_by_header(text, number, marker_end):
     """
     Busca o título usando o padrão de cabeçalho padrão.
@@ -141,9 +335,8 @@ def _find_title_by_header(text, number, marker_end):
     """
     print(f"{get_current_time()} 🔹 [STEP] [_find_title_by_header] Starting for number: {number}")
     match = re.search(
-        rf"(?:Demanda\s+)?{re.escape(number)}\s*:\s*(.+?){marker_end}",
+        rf"(?i:(?:Demanda|Item\s+de\s+Trabalho)\s+)?{re.escape(number)}\s*:\s*(.+?){marker_end}",
         text,
-        re.IGNORECASE,
     )
     if match:
         result = clean_title(match.group(1))
@@ -165,13 +358,14 @@ def _find_title_by_id_only(text, number):
         str or None: The matched title, if found.
     """
     print(f"{get_current_time()} 🔹 [STEP] [_find_title_by_id_only] Starting for number: {number}")
-    match = re.search(rf"\b{re.escape(number)}\s*:\s*(.{{1,300}})", text, re.IGNORECASE)
+    match = re.search(rf"\b{re.escape(number)}\s*:\s*(.{{1,300}})", text)
     if match:
+        colon_split = r"\s+(?:Status|STATUS|Resolução|RESOLUÇÃO|Sistema de Origem|Tipo|Solicitante)\s*:"
+        section_split = r"\s+(?:Origem|Detalhes|Descrição|Sistema e Contrato|Visão Geral)\b"
         candidate = re.split(
-            r"\s+(?:Status|Resolução|Origem|Detalhes)\s*:?",
+            rf"(?:{colon_split}|{section_split})",
             match.group(1),
             maxsplit=1,
-            flags=re.IGNORECASE,
         )
         result = clean_title(candidate[0])
         print(f"{get_current_time()} ✅ [SUCCESS] [_find_title_by_id_only] Completed. Found: '{result}'")
@@ -192,7 +386,7 @@ def _find_title_by_ewm_format(text, marker_end):
         str or None: The matched title, if found.
     """
     print(f"{get_current_time()} 🔹 [STEP] [_find_title_by_ewm_format] Starting search")
-    match = re.search(r"Título\s*:\s*\*?\s*(.+?)" + marker_end, text, re.IGNORECASE)
+    match = re.search(r"(?i:Título)\s*:\s*\*?\s*(.+?)" + marker_end, text)
     if match:
         result = clean_title(match.group(1))
         print(f"{get_current_time()} ✅ [SUCCESS] [_find_title_by_ewm_format] Completed. Found: '{result}'")
@@ -201,19 +395,29 @@ def _find_title_by_ewm_format(text, marker_end):
     return None
 
 
-def find_title(text, number):
+def find_title(text, number, raw_text=None):
     """
     Procura o título tanto no cabeçalho com ':' quanto no campo Título.
 
     Parameters:
         text (str): The complete parsed text from the PDF.
         number (str): The identified demand number.
+        raw_text (str, optional): Raw extracted PDF text with line breaks preserved.
 
     Returns:
         str or None: The title, if any strategy successfully extracts it.
     """
     print(f"{get_current_time()} 🔹 [STEP] [find_title] Starting execution for number: {number}")
-    marker_end = r"(?=\s+(?:" + "|".join(map(re.escape, FIELD_MARKERS)) + r")\b|$)"
+    source_for_lines = raw_text if raw_text is not None else (text if "\n" in text else None)
+    if source_for_lines is not None:
+        line_result = _find_title_from_lines(source_for_lines, number)
+        if line_result:
+            print(f"{get_current_time()} ✅ [SUCCESS] [find_title] Completed. Found title: '{line_result}'")
+            return line_result
+
+    colon_markers_group = "(?:" + "|".join(map(re.escape, _COLON_MARKERS_VARIANTS)) + r")\s*:"
+    section_markers_group = "(?:" + "|".join(map(re.escape, _SECTION_MARKERS_VARIANTS)) + r")\b"
+    marker_end = rf"(?=\s+(?:{colon_markers_group}|{section_markers_group})|$)"
     result = (
         _find_title_by_header(text, number, marker_end) or
         _find_title_by_id_only(text, number) or
@@ -375,7 +579,7 @@ def extract_info_from_pdf(pdf_path):
         raw_text = extract_text_from_pdf(pdf_path)
         text = normalize_pdf_text(raw_text)
         numero = find_number(text)
-        titulo = find_title(text, numero) if numero else None
+        titulo = find_title(text, numero, raw_text=raw_text) if numero else None
         
         print(f"{get_current_time()} ✅ [SUCCESS] [extract_info_from_pdf] Completed extraction for {pdf_path.name}. Numero: {numero}, Titulo: {titulo}")
         return numero, titulo, text
@@ -773,6 +977,13 @@ def apply_abbreviation_phases(summary, nlp_model):
     return summary
 
 
+def is_all_uppercase_title(title: str) -> bool:
+    """
+    Retorna True se o título estiver inteiramente em letras maiúsculas.
+    """
+    return sum(c.isalpha() for c in title) > 4 and title.isupper()
+
+
 def prettify_name_logic(name: str, nlp_model) -> str:
     """
     Applies the prettification logic to a filename string.
@@ -792,15 +1003,21 @@ def prettify_name_logic(name: str, nlp_model) -> str:
     if not name:
         return name
 
+    was_all_upper = name.isupper()
+
     if nlp_model is None:
         minor_words = {"a", "o", "as", "os", "e", "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
                        "por", "para", "com", "sem", "um", "uma", "the", "of", "and", "in", "on", "to", "for", "at", "by"}
         words = name.split()
-        formatted = [
-            w if (len(w) <= 4 and w.isupper() and any(c.isalpha() for c in w))
-            else (w.capitalize() if (idx == 0 or w.lower() not in minor_words) else w.lower())
-            for idx, w in enumerate(words)
-        ]
+        formatted = []
+        for idx, w in enumerate(words):
+            core = re.sub(r"^[^A-Za-zÀ-ÖØ-öø-ÿ]+|[^A-Za-zÀ-ÖØ-öø-ÿ]+$", "", w)
+            if not was_all_upper and 2 <= len(core) <= 4 and core.isupper():
+                formatted.append(w)
+            elif idx == 0 or core.lower() not in minor_words:
+                formatted.append(re.sub(r"[A-Za-zÀ-ÖØ-öø-ÿ]", lambda m: m.group(0).upper(), w.lower(), count=1))
+            else:
+                formatted.append(w.lower())
         result = " ".join(formatted).strip()
         if result:
             result = result[0].upper() + result[1:]
@@ -808,9 +1025,7 @@ def prettify_name_logic(name: str, nlp_model) -> str:
         return result
 
     original_text = name
-    text_for_nlp = name
-    if text_for_nlp.isupper():
-        text_for_nlp = text_for_nlp.lower()
+    text_for_nlp = name.lower() if was_all_upper else name
         
     doc = nlp_model(text_for_nlp)
     
@@ -821,7 +1036,9 @@ def prettify_name_logic(name: str, nlp_model) -> str:
         has_alpha = any(c.isalpha() for c in word)
 
         if has_alpha:
-            if token.pos_ == "PROPN" and len(word) <= 4 and original_word.isupper():
+            if not was_all_upper and 2 <= len(word) <= 4 and original_word.isupper():
+                word_fmt = original_word
+            elif was_all_upper and token.pos_ == "PROPN" and 2 <= len(word) <= 4 and original_word.isupper():
                 word_fmt = original_word
             elif token.pos_ in ["NOUN", "PROPN", "VERB", "AUX", "ADJ", "ADV"]:
                 word_fmt = word.capitalize()
@@ -867,19 +1084,25 @@ def process_file(filepath):
         log_error_line(f"{get_current_time()} 🔴 [ERROR] [process_file] Não foi possível extrair número ou título completo de: {filepath.name}")
         return "ERROR"
         
-    try:
-        lang_code = detect(titulo) if detect is not None else "xx"
-    except Exception:
-        lang_code = "xx"
-        
-    current_nlp = load_spacy_model(lang_code)
-    
-    titulo = prettify_name_logic(titulo, current_nlp)
-    titulo = apply_abbreviation_phases(titulo, current_nlp)
-    
-    # Capitalize contents within square brackets
-    titulo = re.sub(r'\[(.*?)\]', lambda m: f"[{m.group(1).upper()}]", titulo)
-        
+    needs_prettify = is_all_uppercase_title(titulo)
+    needs_abbreviation = len(titulo) > 255
+    current_nlp = None
+
+    if needs_prettify or needs_abbreviation:
+        try:
+            lang_code = detect(titulo) if detect is not None else "xx"
+        except Exception:
+            lang_code = "xx"
+        current_nlp = load_spacy_model(lang_code)
+
+    if needs_prettify:
+        titulo = prettify_name_logic(titulo, current_nlp)
+        # Capitalize contents within square brackets after Title Case conversion
+        titulo = re.sub(r'\[(.*?)\]', lambda m: f"[{m.group(1).upper()}]", titulo)
+
+    if needs_abbreviation or len(titulo) > 255:
+        titulo = apply_abbreviation_phases(titulo, current_nlp)
+
     sanitized_titulo = sanitize_filename(titulo)
     
     dt, _, fmt = parse_date_prefix(filepath.name)
