@@ -142,3 +142,9 @@ cython_debug/
 .vscode/
 *.swp
 *.swo
+
+# Noterun local configuration
+\!-RUN-MOVE_DESTINY.txt
+
+# Noterun local configuration
+\!-RUN-MOVE-DESTINY.txt
