@@ -870,46 +870,35 @@ def handle_error_file(file: str, current_dir: str, error_log: str) -> None:
 
 
 def rename_file(old_path: str, new_path: str) -> bool:
-    """Renames a file from old_path to new_path."""
+    """Renames/Moves a file from old_path to new_path."""
     log_step(
-        f"Attempting to rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
+        f"Attempting to move/rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
     last_error = None
     for attempt in range(1, 4):
         try:
-            os.rename(old_path, new_path)
+            shutil.move(old_path, new_path)
             log_step_success(
-                "Renaming file", f"Successfully renamed file to '{os.path.basename(new_path)}'")
+                "Renaming file", f"Successfully moved/renamed file to '{os.path.basename(new_path)}'")
             return True
         except FileNotFoundError:
             log_step_error("Renaming file",
                            f"Original file '{old_path}' not found for renaming.")
             return False
-        except PermissionError as e:
-            last_error = f"Permission denied when renaming '{old_path}': {e}"
+        except (PermissionError, OSError) as e:
+            last_error = f"Error moving/renaming '{old_path}' to '{new_path}': {e}"
             if attempt < 3:
                 time.sleep(0.4 * attempt)
                 continue
-        except OSError as e:
-            try:
-                shutil.move(old_path, new_path)
-                log_step_success(
-                    "Renaming file", f"Successfully moved file to '{os.path.basename(new_path)}'")
-                return True
-            except Exception as move_err:
-                last_error = f"Error renaming/moving file '{old_path}' to '{new_path}': {move_err}"
-                if attempt < 3:
-                    time.sleep(0.4 * attempt)
-                    continue
         except Exception as e:
             last_error = f"Error renaming file '{old_path}' to '{new_path}': {e}"
             break
 
-    log_step_error("Renaming file", last_error or f"Failed to rename '{old_path}'.")
+    log_step_error("Renaming file", last_error or f"Failed to move/rename '{old_path}'.")
     return False
 
 
-def rename_associated_files(current_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
-    """Searches for and renames other files in the directory that share the same old base name."""
+def rename_associated_files(current_dir: str, target_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
+    """Searches for and renames/moves other files in the directory that share the same old base name."""
     log_step(
         f"Searching for associated files with base name '{old_base_name}' in '{current_dir}'")
     success_count = 0
@@ -931,17 +920,18 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
 
                 f_base_name, f_ext = os.path.splitext(f)
 
-                if f_base_name == old_base_name and f != new_pdf_name:
+                if f_base_name == old_base_name and f.lower() != new_pdf_name.lower():
                     log_step(f"Found associated file: '{f}'")
                     new_f_name = f"{final_new_base_name}{f_ext}"
-                    new_f_path = os.path.join(current_dir, new_f_name)
+                    new_f_path = os.path.join(target_dir, new_f_name)
 
                     log_step(f"Checking if target path '{new_f_path}' exists")
-                    if os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                    norm_f_path = os.path.normcase(os.path.abspath(f_path))
+                    if os.path.exists(new_f_path) and norm_f_path != os.path.normcase(os.path.abspath(new_f_path)):
                         counter = 2
-                        while os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                        while os.path.exists(new_f_path) and norm_f_path != os.path.normcase(os.path.abspath(new_f_path)):
                             new_f_name = f"{final_new_base_name} ({counter}){f_ext}"
-                            new_f_path = os.path.join(current_dir, new_f_name)
+                            new_f_path = os.path.join(target_dir, new_f_name)
                             counter += 1
 
                     log_step(
@@ -1041,14 +1031,16 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
         new_file_name = f"{new_base_name}.pdf"
 
         old_path = os.path.join(current_dir, file)
-        new_path = os.path.join(current_dir, new_file_name)
+        target_dir = os.path.dirname(os.path.abspath(current_dir))
+        new_path = os.path.join(target_dir, new_file_name)
 
-        if os.path.exists(new_path) and old_path.lower() != new_path.lower():
+        norm_old_path = os.path.normcase(os.path.abspath(old_path))
+        if os.path.exists(new_path) and norm_old_path != os.path.normcase(os.path.abspath(new_path)):
             counter = 2
             while True:
                 new_file_name = f"{new_base_name} ({counter}).pdf"
-                new_path = os.path.join(current_dir, new_file_name)
-                if not os.path.exists(new_path) or old_path.lower() == new_path.lower():
+                new_path = os.path.join(target_dir, new_file_name)
+                if not os.path.exists(new_path) or norm_old_path == os.path.normcase(os.path.abspath(new_path)):
                     break
                 counter += 1
 
@@ -1063,7 +1055,7 @@ def process_single_file(file: str, current_dir: str, fields: List[str], prompts:
                 log_step_success(
                     "Renaming file", "Primary PDF renamed successfully. Proceeding to rename associated files.")
                 rename_associated_files(
-                    current_dir, orig_base_name, final_base_name, new_file_name)
+                    current_dir, target_dir, orig_base_name, final_base_name, new_file_name)
                 return True
             else:
                 log_step_error(

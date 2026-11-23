@@ -596,12 +596,12 @@ def sanitize_filename(summary: str) -> Optional[str]:
         log_error(func_name, f"Error sanitizing filename: {e}")
         return None
 
-def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str) -> Optional[str]:
+def get_unique_new_path(target_dir: str, new_base_name: str, original_path: str) -> Optional[str]:
     """
     Generates a unique file path by appending a counter if the file already exists.
 
     Args:
-        current_dir (str): Directory where the file resides.
+        target_dir (str): Destination directory where the file will be moved.
         new_base_name (str): Desired new basename.
         original_path (str): The full original path to avoid collisions with itself.
 
@@ -609,18 +609,19 @@ def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str
         Optional[str]: A unique file path or None if error.
     """
     func_name = "get_unique_new_path"
-    log_step(func_name, f"Generating unique path in '{current_dir}'...")
+    log_step(func_name, f"Generating unique path in '{target_dir}'...")
     try:
         new_file_name = f"{new_base_name}.pdf"
-        new_path = os.path.join(current_dir, new_file_name)
+        new_path = os.path.join(target_dir, new_file_name)
+        norm_orig = os.path.normcase(os.path.abspath(original_path))
 
-        if os.path.exists(new_path) and original_path.lower() != new_path.lower():
+        if os.path.exists(new_path) and norm_orig != os.path.normcase(os.path.abspath(new_path)):
             log_step(func_name, "Path exists, finding alternative with counter...")
             counter = 2
             while True:
                 new_file_name = f"{new_base_name} ({counter}).pdf"
-                new_path = os.path.join(current_dir, new_file_name)
-                if not os.path.exists(new_path) or original_path.lower() == new_path.lower():
+                new_path = os.path.join(target_dir, new_file_name)
+                if not os.path.exists(new_path) or norm_orig == os.path.normcase(os.path.abspath(new_path)):
                     break
                 counter += 1
 
@@ -756,15 +757,16 @@ def rename_associated_files(current_dir: str, target_dir: str, old_base_name: st
                 f_base_name, f_ext = os.path.splitext(f)
 
                 # Check if this file is an associated file
-                if f_base_name == old_base_name and f != new_pdf_name:
+                if f_base_name == old_base_name and f.lower() != new_pdf_name.lower():
                     log_step(func_name, f"Found associated file: '{f}'")
                     new_f_name = f"{final_new_base_name}{f_ext}"
                     new_f_path = os.path.join(target_dir, new_f_name)
 
                     log_step(func_name, f"Checking if target path '{new_f_path}' exists.")
-                    if os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                    norm_f_path = os.path.normcase(os.path.abspath(f_path))
+                    if os.path.exists(new_f_path) and norm_f_path != os.path.normcase(os.path.abspath(new_f_path)):
                         counter = 2
-                        while os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                        while os.path.exists(new_f_path) and norm_f_path != os.path.normcase(os.path.abspath(new_f_path)):
                             new_f_name = f"{final_new_base_name} ({counter}){f_ext}"
                             new_f_path = os.path.join(target_dir, new_f_name)
                             counter += 1
@@ -868,8 +870,9 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
     old_base_name = os.path.splitext(os.path.basename(file))[0]
     new_base_name = f"{old_base_name}~{summary_suffix}"
 
-    target_dir = os.path.dirname(current_dir)
-    new_path = get_unique_new_path(target_dir, new_base_name, file)
+    old_path = os.path.join(current_dir, file)
+    target_dir = os.path.dirname(os.path.abspath(current_dir))
+    new_path = get_unique_new_path(target_dir, new_base_name, old_path)
     if not new_path:
         handle_file_error(file, current_dir, "Failed to generate unique new path.")
         return False
@@ -878,7 +881,7 @@ def process_single_file(client: LMStd, file: str, current_dir: str) -> bool:
     final_new_base_name = os.path.splitext(new_file_name)[0]
 
     log_step("process_single_file", f"Ready to rename from '{old_base_name}.pdf' to '{new_file_name}'.")
-    success = rename_file(os.path.join(current_dir, file), new_path)
+    success = rename_file(old_path, new_path)
 
     if success:
         log_success("process_single_file", "Primary PDF renamed successfully. Proceeding to rename associated files.")

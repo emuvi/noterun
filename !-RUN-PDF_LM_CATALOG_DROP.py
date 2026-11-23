@@ -827,23 +827,24 @@ Example Response:
         return {f: "EMPTY" for f in fields}
 
 
-def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str) -> Optional[str]:
+def get_unique_new_path(target_dir: str, new_base_name: str, original_path: str) -> Optional[str]:
     """Generates a unique file path by appending a counter if the file already exists."""
     print_step(
         f"Generating a unique new file path for base name '{new_base_name}'.")
     try:
         new_file_name = f"{new_base_name}.pdf"
-        new_path = os.path.join(current_dir, new_file_name)
+        new_path = os.path.join(target_dir, new_file_name)
+        norm_orig = os.path.normcase(os.path.abspath(original_path))
 
         print_step(f"Checking if path '{new_path}' already exists.")
-        if os.path.exists(new_path) and original_path.lower() != new_path.lower():
+        if os.path.exists(new_path) and norm_orig != os.path.normcase(os.path.abspath(new_path)):
             print_step(
                 "Path already exists. Finding a unique filename with a counter.")
             counter = 2
             while True:
                 new_file_name = f"{new_base_name} ({counter}).pdf"
-                new_path = os.path.join(current_dir, new_file_name)
-                if not os.path.exists(new_path) or original_path.lower() == new_path.lower():
+                new_path = os.path.join(target_dir, new_file_name)
+                if not os.path.exists(new_path) or norm_orig == os.path.normcase(os.path.abspath(new_path)):
                     print_success(f"Found unique filename: '{new_file_name}'")
                     break
                 counter += 1
@@ -856,46 +857,35 @@ def get_unique_new_path(current_dir: str, new_base_name: str, original_path: str
 
 
 def rename_file(old_path: str, new_path: str) -> bool:
-    """Renames a file from old_path to new_path."""
+    """Renames/Moves a file from old_path to new_path."""
     print_step(
-        f"Attempting to rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'.")
+        f"Attempting to move/rename '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'.")
     last_error = None
     for attempt in range(1, 4):
         try:
-            os.rename(old_path, new_path)
+            shutil.move(old_path, new_path)
             print_success(
-                f"Successfully renamed file to '{os.path.basename(new_path)}'.")
+                f"Successfully moved/renamed file to '{os.path.basename(new_path)}'.")
             return True
         except FileNotFoundError:
             print_error(f"Original file '{old_path}' not found for renaming.")
             return False
-        except PermissionError as e:
-            last_error = f"Permission denied when renaming '{old_path}': {e}"
+        except (PermissionError, OSError) as e:
+            last_error = f"Error moving/renaming '{old_path}' to '{new_path}': {e}"
             if attempt < 3:
                 time.sleep(0.4 * attempt)
                 continue
-        except OSError as e:
-            try:
-                shutil.move(old_path, new_path)
-                print_success(
-                    f"Successfully moved file to '{os.path.basename(new_path)}'.")
-                return True
-            except Exception as move_err:
-                last_error = f"Error renaming/moving file '{old_path}' to '{new_path}': {move_err}"
-                if attempt < 3:
-                    time.sleep(0.4 * attempt)
-                    continue
         except Exception as e:
             last_error = f"Error renaming file '{old_path}' to '{new_path}': {e}"
             break
 
-    print_error(last_error or f"Failed to rename '{old_path}'.")
+    print_error(last_error or f"Failed to move/rename '{old_path}'.")
     return False
 
 
-def rename_associated_files(current_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
+def rename_associated_files(current_dir: str, target_dir: str, old_base_name: str, final_new_base_name: str, new_pdf_name: str) -> None:
     """
-    Searches for and renames other files in the directory that share the same old base name.
+    Searches for and renames/moves other files in the directory that share the same old base name.
     Includes a progress cycle.
     """
     print_step(
@@ -920,18 +910,19 @@ def rename_associated_files(current_dir: str, old_base_name: str, final_new_base
                 f_base_name, f_ext = os.path.splitext(f)
 
                 # Check if this file is an associated file
-                if f_base_name == old_base_name and f != new_pdf_name:
+                if f_base_name == old_base_name and f.lower() != new_pdf_name.lower():
                     print_step(f"Found associated file: '{f}'")
                     new_f_name = f"{final_new_base_name}{f_ext}"
-                    new_f_path = os.path.join(current_dir, new_f_name)
+                    new_f_path = os.path.join(target_dir, new_f_name)
 
                     print_step(
                         f"Checking if target path '{new_f_path}' exists.")
-                    if os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                    norm_f_path = os.path.normcase(os.path.abspath(f_path))
+                    if os.path.exists(new_f_path) and norm_f_path != os.path.normcase(os.path.abspath(new_f_path)):
                         counter = 2
-                        while os.path.exists(new_f_path) and f_path.lower() != new_f_path.lower():
+                        while os.path.exists(new_f_path) and norm_f_path != os.path.normcase(os.path.abspath(new_f_path)):
                             new_f_name = f"{final_new_base_name} ({counter}){f_ext}"
-                            new_f_path = os.path.join(current_dir, new_f_name)
+                            new_f_path = os.path.join(target_dir, new_f_name)
                             counter += 1
 
                     print_step(
@@ -1018,7 +1009,7 @@ class DropZone(QLabel):
             self.session_fail_count = 0
             self.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.setText(
-                "Drag and Drop PDF File Here\n\n🔹 Action: Catalog Metadata\n(Extracts metadata and renames file)")
+                "Drag and Drop PDF File Here\n\n🔹 Action: Catalog Metadata\n(Extracts metadata, renames file, and moves to parent folder)")
             self.setStyleSheet('''
                 QLabel {
                     border: 4px dashed #aaa;
@@ -1164,9 +1155,10 @@ class DropZone(QLabel):
                         file_path), os.path.dirname(file_path), error_msg)
                     cycle_fail = 1
                 else:
-                    current_dir = os.path.dirname(file_path)
+                    current_dir = os.path.dirname(os.path.abspath(file_path))
+                    target_dir = os.path.dirname(current_dir)
                     new_path = get_unique_new_path(
-                        current_dir, new_base_name, file_path)
+                        target_dir, new_base_name, file_path)
 
                     if not new_path:
                         error_msg = "Failed to determine a unique new path. Aborting rename process."
@@ -1190,7 +1182,7 @@ class DropZone(QLabel):
                             print_success(
                                 "Primary PDF renamed successfully. Proceeding to rename associated files.")
                             rename_associated_files(
-                                current_dir, old_base_name, final_new_base_name, new_file_name)
+                                current_dir, target_dir, old_base_name, final_new_base_name, new_file_name)
                         else:
                             cycle_fail = 1
                             print_error(
