@@ -15,6 +15,19 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
+
+def read_input(prompt: str = "") -> str:
+    """
+    Prints the prompt to stdout and reads a line from stdin without writing to stderr.
+    Avoids CPython's interactive input(prompt) writing prompts to stderr on Windows consoles.
+    """
+    if prompt:
+        print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    if line == "":
+        raise EOFError
+    return line.rstrip("\r\n")
+
 # Global variable for the number of zero-padded places in the index
 INDEX_PADDING = 3
 
@@ -304,7 +317,7 @@ def main():
     log_step(func_name, "Starting main process")
     
     try:
-        user_prefix = input("Enter the string to use as prefix: ").strip()
+        user_prefix = read_input("Enter the string to use as prefix: ").strip()
     except (EOFError, KeyboardInterrupt):
         log_info(func_name, "Operation canceled by user.")
         return 0

@@ -19,6 +19,19 @@ def print_error(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def read_input(prompt: str = "") -> str:
+    """
+    Prints the prompt to stdout and reads a line from stdin without writing to stderr.
+    Avoids CPython's interactive input(prompt) writing prompts to stderr on Windows consoles.
+    """
+    if prompt:
+        print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    if line == "":
+        raise EOFError
+    return line.rstrip("\r\n")
+
+
 def sanitize_xml_text(text: str) -> str:
     """Strips XML 1.0 illegal control characters so XML serialization never fails."""
     return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
@@ -433,7 +446,7 @@ def main():
             ans = 'n'
         else:
             try:
-                ans = input("\nDo you want to delete the origin files? (Y/N): ")
+                ans = read_input("\nDo you want to delete the origin files? (Y/N): ")
             except (EOFError, KeyboardInterrupt):
                 ans = 'n'
             

@@ -13,6 +13,19 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 
 
+def read_input(prompt: str = "") -> str:
+    """
+    Prints the prompt to stdout and reads a line from stdin without writing to stderr.
+    Avoids CPython's interactive input(prompt) writing prompts to stderr on Windows consoles.
+    """
+    if prompt:
+        print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    if line == "":
+        raise EOFError
+    return line.rstrip("\r\n")
+
+
 def get_random_name(length=18):
     characters = string.ascii_uppercase + string.digits
     return ''.join(random.choice(characters) for i in range(length))
@@ -115,7 +128,7 @@ def rename_files_in_directory():
 
 def main():
     try:
-        proceed = input(
+        proceed = read_input(
             "Do you want to proceed with random renaming all files in the current directory? (yes/no): ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print("\nOperation canceled.")

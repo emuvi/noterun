@@ -20,6 +20,19 @@ def print_error(message: str) -> None:
     """Prints an error message to stderr."""
     print(message, file=sys.stderr)
 
+
+def read_input(prompt: str = "") -> str:
+    """
+    Prints the prompt to stdout and reads a line from stdin without writing to stderr.
+    Avoids CPython's interactive input(prompt) writing prompts to stderr on Windows consoles.
+    """
+    if prompt:
+        print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    if line == "":
+        raise EOFError
+    return line.rstrip("\r\n")
+
 # ==============================================================================
 # GLOBAL CONFIGURATION
 # ==============================================================================
@@ -244,7 +257,7 @@ def main():
             ans = 'n'
         else:
             try:
-                ans = input("\nDo you want to delete the origin files? (Y/N): ")
+                ans = read_input("\nDo you want to delete the origin files? (Y/N): ")
             except (EOFError, KeyboardInterrupt):
                 ans = 'n'
             

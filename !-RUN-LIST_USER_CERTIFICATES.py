@@ -32,6 +32,19 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
+
+def read_input(prompt: str = "") -> str:
+    """
+    Prints the prompt to stdout and reads a line from stdin without writing to stderr.
+    Avoids CPython's interactive input(prompt) writing prompts to stderr on Windows consoles.
+    """
+    if prompt:
+        print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    if line == "":
+        raise EOFError
+    return line.rstrip("\r\n")
+
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -535,7 +548,7 @@ def interactive_menu(certs: list[dict], store_name: str, use_color: bool = True)
         print(f"  {c_cian}[S]{c_reset}      - Sair do programa")
 
         try:
-            escolha = input(f"\n{c_bold}Escolha uma opção (ou Enter para sair): {c_reset}").strip()
+            escolha = read_input(f"\n{c_bold}Escolha uma opção (ou Enter para sair): {c_reset}").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nEncerrando visualizador de certificados.")
             break

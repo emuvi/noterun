@@ -14,6 +14,19 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
+
+def read_input(prompt: str = "") -> str:
+    """
+    Prints the prompt to stdout and reads a line from stdin without writing to stderr.
+    Avoids CPython's interactive input(prompt) writing prompts to stderr on Windows consoles.
+    """
+    if prompt:
+        print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    if line == "":
+        raise EOFError
+    return line.rstrip("\r\n")
+
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logging.getLogger("pypdf").setLevel(logging.ERROR)
@@ -223,7 +236,7 @@ def main() -> int:
             ans = 'n'
         else:
             try:
-                ans = input("\nDo you want to delete the origin files HTML? (Y/N): ")
+                ans = read_input("\nDo you want to delete the origin files HTML? (Y/N): ")
             except (EOFError, KeyboardInterrupt):
                 ans = 'n'
 
