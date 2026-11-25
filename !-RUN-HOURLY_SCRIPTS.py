@@ -13,6 +13,13 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
+
 # List of scripts to be executed (relative to the current directory or this script's directory).
 SCRIPTS: List[str] = []
 

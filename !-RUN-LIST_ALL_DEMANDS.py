@@ -12,6 +12,13 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 
 
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
+
+
 OUTPUT_FILENAME = "!-LIST_ALL_DEMANDS.txt"
 FILENAME_PATTERN = re.compile(
     r"^(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}) - (\d+) - (.+)\.pdf$",

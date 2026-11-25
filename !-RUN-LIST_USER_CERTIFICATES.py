@@ -33,6 +33,11 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 
 
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
+
 def read_input(prompt: str = "") -> str:
     """
     Prints the prompt to stdout and reads a line from stdin without writing to stderr.

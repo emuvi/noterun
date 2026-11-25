@@ -15,6 +15,13 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
+
 # Global variable for the number of zero-padded places in the index
 INDEX_PADDING = 3
 

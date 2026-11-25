@@ -15,6 +15,13 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
+
+
+def print_error(message: str) -> None:
+    """Prints an error message to stderr."""
+    print(message, file=sys.stderr)
+
+
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 os.environ.setdefault("QT_LOGGING_RULES", "*.debug=false;*.info=false;*.warning=false")
