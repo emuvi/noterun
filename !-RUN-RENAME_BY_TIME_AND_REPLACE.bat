@@ -1,13 +1,13 @@
-﻿@echo off
+@echo off
 setlocal
 chcp 65001 >nul 2>&1
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 
 set "SCRIPT_PY=%~dpn0.py"
-for /f "tokens=2-4 delims=/ " %%%%a in ('date /t') do (set "DATE_PART=%%%%c%%%%a%%%%b")
-for /f "tokens=1-2 delims=/:" %%%%a in ('time /t') do (set "TIME_PART=%%%%a%%%%b")
-for /f "tokens=3 delims=/:" %%%%a in ('time /t') do (set "SECONDS_PART=%%%%a")
+for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set "DATE_PART=%%c%%a%%b")
+for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set "TIME_PART=%%a%%b")
+for /f "tokens=3 delims=/:" %%a in ('time /t') do (set "SECONDS_PART=%%a")
 set "TIMESTAMP=%DATE_PART%_%TIME_PART%%SECONDS_PART%"
 set "ERR_FILE=%CD%\%~n0_%TIMESTAMP%.log"
 
@@ -34,7 +34,7 @@ set "EXIT_CODE=%ERRORLEVEL%"
 if not defined EXIT_CODE set "EXIT_CODE=0"
 
 set "ERR_SIZE=0"
-if exist "%ERR_FILE%" for %%%%A in ("%ERR_FILE%") do set "ERR_SIZE=%%%%~zA"
+if exist "%ERR_FILE%" for %%A in ("%ERR_FILE%") do set "ERR_SIZE=%%~zA"
 if not defined ERR_SIZE set "ERR_SIZE=0"
 
 if %EXIT_CODE% NEQ 0 (
