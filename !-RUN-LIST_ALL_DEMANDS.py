@@ -66,7 +66,7 @@ def collect_latest_demands(directory):
             print(f"[-] Skipping unreadable entry '{filepath}': {error}", file=sys.stderr)
             continue
 
-    return sorted(latest_by_number.values(), key=lambda record: (record[0], record[2]), reverse=True)
+    return sorted(latest_by_number.values(), key=lambda record: f"{record[2]}{record[1]}", reverse=True)
 
 
 def write_report(directory, demands):
