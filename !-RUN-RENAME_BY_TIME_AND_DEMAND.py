@@ -707,8 +707,8 @@ def parse_date_prefix(filename):
             return dt, rest, "%B %d %Y %H-%M-%S"
 
     formats = [
-        "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
-        "%Y-%m-%d %H:%M:%S", "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d",
+        "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S",
+        "%Y.%m.%d %H.%M.%S", "%Y-%m-%d %H:%M:%S", "%Y.%m.%d",
         "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
         "%y%m%d_%H%M%S", "%Y%m%d_%H%M%S", "%Y%m%d",
         "%Y.%m.%d %H.%M", "%Y-%m-%d %H.%M", "%Y-%m-%d_%H.%M",
@@ -747,25 +747,41 @@ def generate_new_filename(filename, filepath):
     Generates the targeted standard filename using parsed or file system dates.
     """
     print(f"{get_current_time()} 🔹 [STEP] [generate_new_filename] Starting for: '{filename}'")
-    dt, rest_of_name, fmt = parse_date_prefix(filename)
-    target_fmt = "%Y.%m.%d-%H.%M"
+    prefix_match = re.match(r"^(\[ .*? \] - )(.*)$", filename)
+    if prefix_match:
+        existing_prefix = prefix_match.group(1)
+        name_to_parse = prefix_match.group(2)
+    else:
+        existing_prefix = ""
+        name_to_parse = filename
+
+    dt, rest_of_name, fmt = parse_date_prefix(name_to_parse)
+    target_fmt = "%Y.%m.%d-%H.%M.%S"
 
     if dt:
-        if fmt == target_fmt and filename.startswith(dt.strftime(target_fmt) + " - "):
+        if fmt == target_fmt and name_to_parse.startswith(dt.strftime(target_fmt) + " - "):
             print(f"{get_current_time()} ✅ [SUCCESS] [generate_new_filename] Already perfectly formatted.")
             return None, "Already perfectly formatted with date prefix"
             
         if fmt and '%H' not in fmt:
             file_dt = get_file_time(filepath)
-            if file_dt:
-                dt = dt.replace(hour=file_dt.hour, minute=file_dt.minute, second=file_dt.second)
+            if not file_dt:
+                log_error_line(f"{get_current_time()} 🔴 [ERROR] [generate_new_filename] Cannot process without a valid date.")
+                return None, "Cannot process without a valid date in file metadata"
+            dt = dt.replace(hour=file_dt.hour, minute=file_dt.minute, second=file_dt.second)
+        elif fmt and '%S' not in fmt:
+            file_dt = get_file_time(filepath)
+            if not file_dt:
+                log_error_line(f"{get_current_time()} 🔴 [ERROR] [generate_new_filename] Cannot process without a valid date.")
+                return None, "Cannot process without a valid date in file metadata"
+            dt = dt.replace(second=file_dt.second)
     else:
         dt = get_file_time(filepath)
         if not dt:
             log_error_line(f"{get_current_time()} 🔴 [ERROR] [generate_new_filename] Cannot process without a valid date.")
             return None, "Cannot process without a valid date in file metadata"
             
-        rest_of_name = filename
+        rest_of_name = name_to_parse
         
         if rest_of_name.startswith(' - '):
             rest_of_name = rest_of_name[3:]
@@ -774,7 +790,7 @@ def generate_new_filename(filename, filepath):
 
     formatted_dt = dt.strftime(target_fmt)
     
-    prefix = f"{formatted_dt} - "
+    prefix = f"{existing_prefix}{formatted_dt} - "
     suffix = filepath.suffix
     
     if rest_of_name.endswith(suffix):
@@ -1077,9 +1093,13 @@ def process_file(filepath):
         return process_and_rename_by_time(filepath)
         
     # Processamento de PDF
-    if re.match(r"^\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2} - ", filepath.name, re.IGNORECASE):
-        print(f"{get_current_time()} ℹ️ [LOG] [process_file] PDF '{filepath.name}' já começa com data e hora. Pulando extração.")
+    if re.match(r"^(?:\[ .*? \] - )?\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2} - ", filepath.name, re.IGNORECASE):
+        print(f"{get_current_time()} ℹ️ [LOG] [process_file] PDF '{filepath.name}' já começa com data e hora completas. Pulando extração.")
         return "IGNORED"
+
+    if re.match(r"^(?:\[ .*? \] - )?\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2} - ", filepath.name, re.IGNORECASE):
+        print(f"{get_current_time()} ℹ️ [LOG] [process_file] PDF '{filepath.name}' está no formato sem segundos. Mantendo nome atual e incluindo apenas os segundos.")
+        return process_and_rename_by_time(filepath)
 
     numero, titulo, text = extract_info_from_pdf(filepath)
     
@@ -1119,11 +1139,15 @@ def process_file(filepath):
             file_dt = get_file_time(filepath)
             if file_dt:
                 dt = dt.replace(hour=file_dt.hour, minute=file_dt.minute, second=file_dt.second)
+        elif fmt and '%S' not in fmt:
+            file_dt = get_file_time(filepath)
+            if file_dt:
+                dt = dt.replace(second=file_dt.second)
     else:
         dt = get_file_time(filepath)
         
     if dt:
-        formatted_dt = dt.strftime("%Y.%m.%d-%H.%M")
+        formatted_dt = dt.strftime("%Y.%m.%d-%H.%M.%S")
         prefix = f"{formatted_dt} - {numero} - "
     else:
         prefix = f"{numero} - "

@@ -42,11 +42,34 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
             - The remaining part of the filename after removing the time prefix.
             - The format string that matched, or None.
     """
+    english_months = (
+        "january", "february", "march", "april", "may", "june",
+        "july", "august", "september", "october", "november", "december",
+    )
+    english_timestamp = re.match(
+        r"^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})\s+(\d{2})-(\d{2})-(\d{2})",
+        filename, re.IGNORECASE,
+    )
+    if english_timestamp:
+        try:
+            month = english_months.index(english_timestamp.group(1).casefold()) + 1
+            day, year, hour, minute, second = map(int, english_timestamp.groups()[1:])
+            dt = datetime.datetime(year, month, day, hour, minute, second)
+        except ValueError:
+            pass
+        else:
+            rest = filename[english_timestamp.end():]
+            for separator, length in ((' - ', 3), ('- ', 2), (' -', 2), (' ', 1), ('-', 1), ('_', 1)):
+                if rest.startswith(separator):
+                    rest = rest[length:]
+                    break
+            return dt, rest, "%B %d %Y %H-%M-%S"
+
     formats = [
-        "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
-        "%Y-%m-%d %H:%M:%S", "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d",
+        "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S",
+        "%Y.%m.%d %H.%M.%S", "%Y-%m-%d %H:%M:%S", "%Y.%m.%d",
         "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
-        "%Y%m%d_%H%M%S", "%Y%m%d",
+        "%y%m%d_%H%M%S", "%Y%m%d_%H%M%S", "%Y%m%d",
         "%Y.%m.%d %H.%M", "%Y-%m-%d %H.%M", "%Y-%m-%d_%H.%M",
         "%Y%m%d%H%M%S", "%Y%m%d%H%M"
     ]

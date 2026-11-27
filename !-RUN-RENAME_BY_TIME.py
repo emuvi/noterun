@@ -78,8 +78,8 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
             return dt, rest, "%B %d %Y %H-%M-%S"
 
     formats = [
-        "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
-        "%Y-%m-%d %H:%M:%S", "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d",
+        "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S",
+        "%Y.%m.%d %H.%M.%S", "%Y-%m-%d %H:%M:%S", "%Y.%m.%d",
         "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
         "%y%m%d_%H%M%S", "%Y%m%d_%H%M%S", "%Y%m%d",
         "%Y.%m.%d %H.%M", "%Y-%m-%d %H.%M", "%Y-%m-%d_%H.%M",
@@ -119,26 +119,40 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
     Returns:
         tuple: (new_name, skip_reason). The newly generated formatted filename, or None if no change is needed/possible.
     """
-    dt, rest_of_name, fmt = parse_date_prefix(filename)
-    target_fmt = "%Y.%m.%d-%H.%M"
+    prefix_match = re.match(r"^(\[ .*? \] - )(.*)$", filename)
+    if prefix_match:
+        existing_prefix = prefix_match.group(1)
+        name_to_parse = prefix_match.group(2)
+    else:
+        existing_prefix = ""
+        name_to_parse = filename
+
+    dt, rest_of_name, fmt = parse_date_prefix(name_to_parse)
+    target_fmt = "%Y.%m.%d-%H.%M.%S"
 
     if dt:
         # Skip if already perfectly formatted
-        if fmt == target_fmt and filename.startswith(dt.strftime(target_fmt) + " - "):
+        if fmt == target_fmt and name_to_parse.startswith(dt.strftime(target_fmt) + " - "):
             return None, "Already perfectly formatted with date prefix"
             
-        # If the recognized format lacks hour data, inject it from the file's metadata
+        # If the recognized format lacks hour or second data, inject missing parts from the file's metadata
         if fmt and '%H' not in fmt:
             file_dt = get_file_time(filepath)
-            if file_dt:
-                dt = dt.replace(hour=file_dt.hour, minute=file_dt.minute, second=file_dt.second)
+            if not file_dt:
+                return None, "Cannot process without a valid date in file metadata"
+            dt = dt.replace(hour=file_dt.hour, minute=file_dt.minute, second=file_dt.second)
+        elif fmt and '%S' not in fmt:
+            file_dt = get_file_time(filepath)
+            if not file_dt:
+                return None, "Cannot process without a valid date in file metadata"
+            dt = dt.replace(second=file_dt.second)
     else:
         # No date recognized in string, rely purely on file metadata
         dt = get_file_time(filepath)
         if not dt:
             return None, "Cannot process without a valid date in file metadata"
             
-        rest_of_name = filename
+        rest_of_name = name_to_parse
         
         # Clean leading separators if any
         if rest_of_name.startswith(' - '):
@@ -147,7 +161,7 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
             rest_of_name = rest_of_name[2:]
 
     formatted_dt = dt.strftime(target_fmt)
-    new_name = f"{formatted_dt} - {rest_of_name}"
+    new_name = f"{existing_prefix}{formatted_dt} - {rest_of_name}"
     
     if new_name == filename:
         return None, "Already perfectly formatted with date prefix"

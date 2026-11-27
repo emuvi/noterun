@@ -216,11 +216,34 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
     """
     Attempts to parse date/time prefix from the filename based on known formats.
     """
+    english_months = (
+        "january", "february", "march", "april", "may", "june",
+        "july", "august", "september", "october", "november", "december",
+    )
+    english_timestamp = re.match(
+        r"^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})\s+(\d{2})-(\d{2})-(\d{2})",
+        filename, re.IGNORECASE,
+    )
+    if english_timestamp:
+        try:
+            month = english_months.index(english_timestamp.group(1).casefold()) + 1
+            day, year, hour, minute, second = map(int, english_timestamp.groups()[1:])
+            dt = datetime.datetime(year, month, day, hour, minute, second)
+        except ValueError:
+            pass
+        else:
+            rest = filename[english_timestamp.end():]
+            for separator, length in ((' - ', 3), ('- ', 2), (' -', 2), (' ', 1), ('-', 1), ('_', 1)):
+                if rest.startswith(separator):
+                    rest = rest[length:]
+                    break
+            return dt, rest, "%B %d %Y %H-%M-%S"
+
     formats = [
-        "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S", "%Y.%m.%d %H.%M.%S",
-        "%Y-%m-%d %H:%M:%S", "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d",
+        "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S",
+        "%Y.%m.%d %H.%M.%S", "%Y-%m-%d %H:%M:%S", "%Y.%m.%d",
         "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
-        "%Y%m%d_%H%M%S", "%Y%m%d",
+        "%y%m%d_%H%M%S", "%Y%m%d_%H%M%S", "%Y%m%d",
         "%Y.%m.%d %H.%M", "%Y-%m-%d %H.%M", "%Y-%m-%d_%H.%M",
         "%Y%m%d%H%M%S", "%Y%m%d%H%M"
     ]
@@ -258,15 +281,23 @@ def generate_new_filename(filename: str) -> Optional[str]:
     """
     name_part, ext = os.path.splitext(filename)
     
-    dt, rest_of_name, fmt = parse_date_prefix(name_part)
+    user_prefix_match = re.match(r"^(\[ .*? \] - )(.*)$", name_part)
+    if user_prefix_match:
+        user_prefix = user_prefix_match.group(1)
+        remaining_part = user_prefix_match.group(2)
+    else:
+        user_prefix = ""
+        remaining_part = name_part
+
+    dt, rest_of_name, fmt = parse_date_prefix(remaining_part)
     
     if dt:
-        prefix_len = len(name_part) - len(rest_of_name)
-        prefix = name_part[:prefix_len]
+        prefix_len = len(remaining_part) - len(rest_of_name)
+        prefix = user_prefix + remaining_part[:prefix_len]
         target_name = rest_of_name
     else:
-        prefix = ""
-        target_name = name_part
+        prefix = user_prefix
+        target_name = remaining_part
     
     prettified_name = prettify_name_logic(target_name)
     
