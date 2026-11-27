@@ -1,6 +1,7 @@
 # Copyright (c) 2026 emuvi
 # SPDX-License-Identifier: MIT
 
+import calendar
 import os
 import datetime
 import sys
@@ -43,9 +44,79 @@ def get_file_time(filepath: str) -> Optional[datetime.datetime]:
                 continue
     return datetime.datetime.now()
 
+def _extract_rest_if_valid_boundary(filename: str, length: int, fmt: str) -> Optional[str]:
+    """
+    Verifies that filename[:length] ends on a valid separator or extension boundary
+    and returns the remaining filename with any leading separator stripped.
+    """
+    rest = filename[length:]
+    if not rest:
+        return "" if fmt != "%Y" else None
+
+    _, ext = os.path.splitext(filename)
+    has_real_ext = bool(ext and re.match(r"^\.[A-Za-z0-9]{1,10}$", ext) and not ext[1:].isdigit())
+
+    for separator, sep_len in ((' - ', 3), ('- ', 2), (' -', 2), (' ', 1), ('-', 1), ('_', 1)):
+        if rest.startswith(separator):
+            if fmt == "%Y":
+                if separator == ' ':
+                    return None
+                after = rest[sep_len:]
+                if not after or (has_real_ext and after == ext):
+                    return None
+            return rest[sep_len:]
+
+    if has_real_ext and rest == ext and fmt != "%Y":
+        return rest
+
+    if length >= 8 and fmt != "%Y" and rest[0].isalpha():
+        return rest
+
+    return None
+
+
+def needs_datetime_completion(fmt: Optional[str]) -> bool:
+    """Returns True if any date/time component (month, day, hour, minute, second) is missing from fmt."""
+    if not fmt:
+        return True
+    has_month = any(tok in fmt for tok in ("%m", "%B", "%b"))
+    has_hour = any(tok in fmt for tok in ("%H", "%I"))
+    return not (has_month and "%d" in fmt and has_hour and "%M" in fmt and "%S" in fmt)
+
+
+def complete_datetime_from_file(
+    dt: datetime.datetime,
+    fmt: Optional[str],
+    file_dt: datetime.datetime,
+) -> datetime.datetime:
+    """
+    Completes only the missing date/time components in `dt` (according to `fmt`)
+    using the file's modification timestamp `file_dt`.
+    """
+    if not fmt:
+        return file_dt
+
+    year = dt.year
+    has_month = any(tok in fmt for tok in ("%m", "%B", "%b"))
+    month = dt.month if has_month else file_dt.month
+
+    if "%d" in fmt:
+        day = dt.day
+    else:
+        max_day = calendar.monthrange(year, month)[1]
+        day = min(file_dt.day, max_day)
+
+    has_hour = any(tok in fmt for tok in ("%H", "%I"))
+    hour = dt.hour if has_hour else file_dt.hour
+    minute = dt.minute if "%M" in fmt else file_dt.minute
+    second = dt.second if "%S" in fmt else file_dt.second
+
+    return datetime.datetime(year, month, day, hour, minute, second)
+
+
 def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, Optional[str]]:
     """
-    Attempts to parse date/time prefix from the filename based on known formats.
+    Attempts to parse date/time prefix from the filename based on known full and partial formats.
     
     Args:
         filename (str): The name of the file to parse.
@@ -58,52 +129,78 @@ def parse_date_prefix(filename: str) -> Tuple[Optional[datetime.datetime], str, 
         "january", "february", "march", "april", "may", "june",
         "july", "august", "september", "october", "november", "december",
     )
-    english_timestamp = re.match(
-        r"^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})\s+(\d{2})-(\d{2})-(\d{2})",
-        filename, re.IGNORECASE,
+    english_patterns = (
+        (r"^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})\s+(\d{2})-(\d{2})-(\d{2})", "%B %d %Y %H-%M-%S"),
+        (r"^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})\s+(\d{2})-(\d{2})", "%B %d %Y %H-%M"),
+        (r"^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", "%B %d %Y"),
+        (r"^([A-Za-z]+)\s+(\d{4})", "%B %Y"),
     )
-    if english_timestamp:
+    for pat, eng_fmt in english_patterns:
+        m = re.match(pat, filename, re.IGNORECASE)
+        if not m:
+            continue
+        month_name = m.group(1).casefold()
+        if month_name not in english_months:
+            continue
+        month = english_months.index(month_name) + 1
+        rest_candidate = _extract_rest_if_valid_boundary(filename, m.end(), eng_fmt)
+        if rest_candidate is None:
+            continue
         try:
-            month = english_months.index(english_timestamp.group(1).casefold()) + 1
-            day, year, hour, minute, second = map(int, english_timestamp.groups()[1:])
-            dt = datetime.datetime(year, month, day, hour, minute, second)
+            if eng_fmt == "%B %d %Y %H-%M-%S":
+                day, year, hour, minute, second = map(int, m.groups()[1:])
+                dt = datetime.datetime(year, month, day, hour, minute, second)
+            elif eng_fmt == "%B %d %Y %H-%M":
+                day, year, hour, minute = map(int, m.groups()[1:])
+                dt = datetime.datetime(year, month, day, hour, minute)
+            elif eng_fmt == "%B %d %Y":
+                day, year = map(int, m.groups()[1:])
+                dt = datetime.datetime(year, month, day)
+            else:
+                year = int(m.group(2))
+                dt = datetime.datetime(year, month, 1)
+            if 1900 <= dt.year <= 2100:
+                return dt, rest_candidate, eng_fmt
         except ValueError:
-            pass
-        else:
-            rest = filename[english_timestamp.end():]
-            for separator, length in ((' - ', 3), ('- ', 2), (' -', 2), (' ', 1), ('-', 1), ('_', 1)):
-                if rest.startswith(separator):
-                    rest = rest[length:]
-                    break
-            return dt, rest, "%B %d %Y %H-%M-%S"
+            continue
 
     formats = [
-        "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M.%S", "%Y-%m-%d_%H-%M-%S",
-        "%Y.%m.%d %H.%M.%S", "%Y-%m-%d %H:%M:%S", "%Y.%m.%d",
-        "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
-        "%y%m%d_%H%M%S", "%Y%m%d_%H%M%S", "%Y%m%d",
-        "%Y.%m.%d %H.%M", "%Y-%m-%d %H.%M", "%Y-%m-%d_%H.%M",
-        "%Y%m%d%H%M%S", "%Y%m%d%H%M"
+        "%Y.%m.%d-%H.%M.%S", "%Y.%m.%d_%H.%M.%S", "%Y.%m.%d %H.%M.%S",
+        "%Y-%m-%d-%H-%M-%S", "%Y-%m-%d_%H-%M-%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H-%M-%S",
+        "%Y-%m-%d-%H.%M.%S", "%Y-%m-%d_%H.%M.%S", "%Y-%m-%d %H.%M.%S",
+        "%d.%m.%Y-%H.%M.%S", "%d-%m-%Y-%H.%M.%S", "%d-%m-%Y_%H-%M.%S",
+        "%Y%m%d_%H%M%S", "%Y%m%d-%H%M%S", "%y%m%d_%H%M%S", "%y%m%d-%H%M%S", "%Y%m%d%H%M%S",
+        "%Y.%m.%d-%H.%M", "%Y.%m.%d_%H.%M", "%Y.%m.%d %H.%M",
+        "%Y-%m-%d-%H-%M", "%Y-%m-%d_%H-%M", "%Y-%m-%d %H-%M",
+        "%Y-%m-%d-%H.%M", "%Y-%m-%d_%H.%M", "%Y-%m-%d %H.%M",
+        "%d.%m.%Y-%H.%M", "%d-%m-%Y-%H.%M", "%d-%m-%Y_%H.%M",
+        "%Y%m%d_%H%M", "%Y%m%d-%H%M", "%y%m%d_%H%M", "%y%m%d-%H%M", "%Y%m%d%H%M",
+        "%Y.%m.%d-%H", "%Y.%m.%d_%H",
+        "%Y-%m-%d-%H", "%Y-%m-%d_%H",
+        "%d.%m.%Y-%H", "%d-%m-%Y-%H",
+        "%Y%m%d_%H", "%Y%m%d-%H",
+        "%Y.%m.%d", "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y", "%Y%m%d",
+        "%Y.%m", "%Y-%m", "%m.%Y", "%m-%Y",
+        "%Y",
     ]
     
-    # Check string prefixes from length 25 down to 8 characters
-    for length in range(25, 7, -1):
+    # Check string prefixes from length 25 down to 4 characters
+    for length in range(25, 3, -1):
         if length > len(filename):
             continue
         prefix = filename[:length]
         for fmt in formats:
+            if fmt == "%Y" and not (length == 4 and prefix.isdigit()):
+                continue
             try:
                 dt = datetime.datetime.strptime(prefix, fmt)
-                rest = filename[length:]
-                
-                if rest.startswith(' - '):
-                    return dt, rest[3:], fmt
-                elif rest.startswith('- ') or rest.startswith(' -'):
-                    return dt, rest[2:], fmt
-                elif rest.startswith(' ') or rest.startswith('-') or rest.startswith('_'):
-                    return dt, rest[1:], fmt
-                else:
-                    return dt, rest, fmt
+                if not (1900 <= dt.year <= 2100):
+                    continue
+                if any(c in fmt for c in ("%Y%m", "%y%m", "%m%d", "%H%M", "%M%S")) and dt.strftime(fmt) != prefix:
+                    continue
+                rest_candidate = _extract_rest_if_valid_boundary(filename, length, fmt)
+                if rest_candidate is not None:
+                    return dt, rest_candidate, fmt
             except ValueError:
                 continue
     return None, filename, None
@@ -129,23 +226,23 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
 
     dt, rest_of_name, fmt = parse_date_prefix(name_to_parse)
     target_fmt = "%Y.%m.%d-%H.%M.%S"
+    _, name_ext = os.path.splitext(name_to_parse)
+    has_real_ext = bool(name_ext and re.match(r"^\.[A-Za-z0-9]{1,10}$", name_ext) and not name_ext[1:].isdigit())
 
     if dt:
-        # Skip if already perfectly formatted
-        if fmt == target_fmt and name_to_parse.startswith(dt.strftime(target_fmt) + " - "):
+        formatted_existing = dt.strftime(target_fmt)
+        if fmt == target_fmt and (
+            name_to_parse.startswith(formatted_existing + " - ")
+            or (has_real_ext and name_to_parse == formatted_existing + name_ext)
+            or name_to_parse == formatted_existing
+        ):
             return None, "Already perfectly formatted with date prefix"
             
-        # If the recognized format lacks hour or second data, inject missing parts from the file's metadata
-        if fmt and '%H' not in fmt:
+        if needs_datetime_completion(fmt):
             file_dt = get_file_time(filepath)
             if not file_dt:
                 return None, "Cannot process without a valid date in file metadata"
-            dt = dt.replace(hour=file_dt.hour, minute=file_dt.minute, second=file_dt.second)
-        elif fmt and '%S' not in fmt:
-            file_dt = get_file_time(filepath)
-            if not file_dt:
-                return None, "Cannot process without a valid date in file metadata"
-            dt = dt.replace(second=file_dt.second)
+            dt = complete_datetime_from_file(dt, fmt, file_dt)
     else:
         # No date recognized in string, rely purely on file metadata
         dt = get_file_time(filepath)
@@ -161,7 +258,10 @@ def generate_new_filename(filename: str, filepath: str) -> Tuple[Optional[str], 
             rest_of_name = rest_of_name[2:]
 
     formatted_dt = dt.strftime(target_fmt)
-    new_name = f"{existing_prefix}{formatted_dt} - {rest_of_name}"
+    if dt and ((has_real_ext and rest_of_name == name_ext) or rest_of_name == ""):
+        new_name = f"{existing_prefix}{formatted_dt}{rest_of_name}"
+    else:
+        new_name = f"{existing_prefix}{formatted_dt} - {rest_of_name}"
     
     if new_name == filename:
         return None, "Already perfectly formatted with date prefix"

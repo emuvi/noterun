@@ -21,7 +21,7 @@ def print_error(message: str) -> None:
 
 OUTPUT_FILENAME = "!-LIST_ALL_DEMANDS.txt"
 FILENAME_PATTERN = re.compile(
-    r"^(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}(?:\.\d{2})?) - (\d+) - (.+)\.pdf$",
+    r"^(\d{4}\.\d{2}(?:\.\d{2}(?:-\d{2}(?:\.\d{2}(?:\.\d{2})?)?)?)?) - (\d+) - (.+)\.pdf$",
     re.IGNORECASE,
 )
 
@@ -34,7 +34,7 @@ def parse_demand_filename(filename):
 
     timestamp, number, title = match.groups()
     parsed_timestamp = None
-    for fmt in ("%Y.%m.%d-%H.%M.%S", "%Y.%m.%d-%H.%M"):
+    for fmt in ("%Y.%m.%d-%H.%M.%S", "%Y.%m.%d-%H.%M", "%Y.%m.%d-%H", "%Y.%m.%d", "%Y.%m"):
         try:
             parsed_timestamp = datetime.strptime(timestamp, fmt)
             break
