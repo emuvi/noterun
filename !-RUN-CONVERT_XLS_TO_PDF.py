@@ -44,7 +44,7 @@ except ImportError as e:
     sys.exit(1)
 
 # Constantes de configuração
-SUPPORTED_EXTENSIONS = ('.xls', '.xlsx', '.xlsm', '.ods', '.odf')
+SUPPORTED_EXTENSIONS = ('.xls', '.xlsx', '.xlsm', '.ods', '.odf', '.csv')
 MAX_COLUMN_WIDTH = 200
 BASE_CHAR_WIDTH_MM = 2.5
 CELL_MARGIN_MM = 4
@@ -276,9 +276,16 @@ def write_sheet_to_pdf(pdf, file_name, sheet_name, df, font_name):
         print_log("🔴", "ERROR", "write_sheet_to_pdf", f"Failed to write sheet {sheet_name}: {e}. Fix by checking DataFrame content and FPDF capabilities.")
         raise
 
-def read_excel_resilient(file_path):
-    """Attempts to read all sheets from a spreadsheet using default and fallback engines."""
+def read_tabular_file(file_path):
+    """Reads a CSV table or all sheets from a spreadsheet using fallback engines."""
     ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".csv":
+        try:
+            df = pd.read_csv(file_path, sep=None, engine="python", encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            df = pd.read_csv(file_path, sep=None, engine="python", encoding="cp1252")
+        return {os.path.splitext(os.path.basename(file_path))[0]: df}
+
     engines = [None]
     if ext in (".xlsx", ".xlsm"):
         engines.extend(["openpyxl", "xlrd"])
@@ -322,7 +329,7 @@ def process_single_file(folder_path, file_name):
         return True, False
         
     try:
-        sheets_dict = read_excel_resilient(file_path)
+        sheets_dict = read_tabular_file(file_path)
         pdf = FPDF()
         font_name = setup_fonts(pdf)
         has_content = False
